@@ -64,6 +64,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       const response = await authService.login(credentials);
       setUser(response.user);
+      return response;
     } catch (err: any) {
       const message =
         err.response?.data?.message ||

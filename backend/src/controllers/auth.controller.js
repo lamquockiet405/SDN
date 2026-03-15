@@ -9,6 +9,7 @@ const {
   getUserAgent,
   generateRandomToken,
   hashToken,
+  generateOTP,
 } = require("../utils/helpers");
 const {
   sendPasswordResetEmail,
@@ -224,19 +225,32 @@ exports.googleLogin = async (req, res) => {
     }
 
     // Verify Google token
-    const ticket = await oauthClient.verifyIdToken({
-      idToken: token,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
+    let ticket;
+    try {
+      ticket = await oauthClient.verifyIdToken({
+        idToken: token,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+    } catch (verifyError) {
+      console.error("Token verification error:", verifyError.message);
+      return res.status(401).json({
+        success: false,
+        message: "Invalid or expired Google token",
+        error: verifyError.message,
+      });
+    }
 
     const payload = ticket.getPayload();
     const { email, name, picture, sub: googleId } = payload;
+
+    console.log("Google verified email:", email, "googleId:", googleId);
 
     // Check if user exists
     let user = await User.findOne({ email });
 
     if (!user) {
       // Create new user
+      console.log("Creating new user:", email);
       user = await User.create({
         name,
         email,
@@ -245,6 +259,7 @@ exports.googleLogin = async (req, res) => {
       });
     } else if (!user.googleId) {
       // Link Google account
+      console.log("Linking Google account to existing user:", email);
       user.googleId = googleId;
       await user.save();
     }
@@ -271,12 +286,15 @@ exports.googleLogin = async (req, res) => {
     // Log Google login
     await logAudit(user._id, "GOOGLE_LOGIN", ipAddress, userAgent);
 
+    const userJson = user.toJSON();
+    console.log("Google login successful for:", email, "role:", userJson.role);
+
     res.status(200).json({
       success: true,
       message: "Google login successful",
       accessToken,
       refreshToken,
-      user: user.toJSON(),
+      user: userJson,
     });
   } catch (error) {
     console.error("Google login error:", error);
@@ -477,6 +495,123 @@ exports.resetPassword = async (req, res) => {
     });
   } catch (error) {
     console.error("Reset password error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error resetting password",
+      error: error.message,
+    });
+  }
+};
+
+// @route   POST /api/auth/forgot-password-otp
+// @desc    Send OTP for password reset
+// @access  Public
+exports.forgotPasswordOTP = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      // Don't reveal if user exists
+      return res.status(200).json({
+        success: true,
+        message: "If an account with this email exists, an OTP has been sent",
+      });
+    }
+
+    // Generate OTP
+    const otp = generateOTP();
+    user.otpSecret = otp;
+    user.otpExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes expiry
+    await user.save();
+
+    // Send OTP email
+    await sendOTPEmail(email, otp);
+
+    const ipAddress = getIpAddress(req);
+    const userAgent = getUserAgent(req);
+    await logAudit(user._id, "PASSWORD_RESET_OTP_SENT", ipAddress, userAgent);
+
+    res.status(200).json({
+      success: true,
+      message: "OTP has been sent to your email",
+    });
+  } catch (error) {
+    console.error("Forgot password OTP error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error sending OTP",
+      error: error.message,
+    });
+  }
+};
+
+// @route   POST /api/auth/verify-password-reset-otp
+// @desc    Verify OTP and reset password
+// @access  Public
+exports.verifyPasswordResetOTP = async (req, res) => {
+  try {
+    const { email, otp, newPassword, confirmPassword } = req.body;
+
+    if (!email || !otp || !newPassword || !confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide all required fields",
+      });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Passwords do not match",
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters",
+      });
+    }
+
+    // Find user with valid OTP
+    const user = await User.findOne({
+      email,
+      otpSecret: otp,
+      otpExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired OTP",
+      });
+    }
+
+    // Update password
+    user.password = newPassword;
+    user.otpSecret = null;
+    user.otpExpires = null;
+    await user.save();
+
+    const ipAddress = getIpAddress(req);
+    const userAgent = getUserAgent(req);
+    await logAudit(user._id, "PASSWORD_RESET_SUCCESS", ipAddress, userAgent);
+
+    res.status(200).json({
+      success: true,
+      message: "Password reset successful",
+    });
+  } catch (error) {
+    console.error("Verify password reset OTP error:", error);
     res.status(500).json({
       success: false,
       message: "Error resetting password",

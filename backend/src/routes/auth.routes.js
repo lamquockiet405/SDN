@@ -7,6 +7,8 @@ const {
   refreshToken,
   forgotPassword,
   resetPassword,
+  forgotPasswordOTP,
+  verifyPasswordResetOTP,
   enable2FA,
   verify2FA,
   disable2FA,
@@ -21,6 +23,8 @@ router.post("/login", login);
 router.post("/google-login", googleLogin);
 router.post("/forgot-password", forgotPassword);
 router.post("/reset-password", resetPassword);
+router.post("/forgot-password-otp", forgotPasswordOTP);
+router.post("/verify-password-reset-otp", verifyPasswordResetOTP);
 router.post("/refresh", refreshToken);
 
 // 2FA routes

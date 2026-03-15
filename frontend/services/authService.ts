@@ -62,6 +62,48 @@ export const authService = {
     return user;
   },
 
+  async forgotPassword(
+    email: string,
+  ): Promise<{ success: boolean; message: string }> {
+    const response = await api.post("/auth/forgot-password", { email });
+    return response.data;
+  },
+
+  async forgotPasswordOTP(
+    email: string,
+  ): Promise<{ success: boolean; message: string }> {
+    const response = await api.post("/auth/forgot-password-otp", { email });
+    return response.data;
+  },
+
+  async verifyPasswordResetOTP(
+    email: string,
+    otp: string,
+    newPassword: string,
+    confirmPassword: string,
+  ): Promise<{ success: boolean; message: string }> {
+    const response = await api.post("/auth/verify-password-reset-otp", {
+      email,
+      otp,
+      newPassword,
+      confirmPassword,
+    });
+    return response.data;
+  },
+
+  async resetPassword(
+    token: string,
+    newPassword: string,
+    confirmPassword: string,
+  ): Promise<{ success: boolean; message: string }> {
+    const response = await api.post("/auth/reset-password", {
+      token,
+      newPassword,
+      confirmPassword,
+    });
+    return response.data;
+  },
+
   getStoredUser(): User | null {
     return tokenUtils.getUser();
   },

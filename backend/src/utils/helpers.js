@@ -23,3 +23,8 @@ exports.generateRandomToken = (length = 32) => {
 exports.hashToken = (token) => {
   return crypto.createHash("sha256").update(token).digest("hex");
 };
+
+// Generate 6-digit OTP
+exports.generateOTP = () => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+};
