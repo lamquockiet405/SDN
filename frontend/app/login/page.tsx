@@ -53,8 +53,17 @@ export default function LoginPage() {
     }
 
     try {
-      await login(formData);
-      router.push("/dashboard");
+      const result = await login(formData);
+
+      // Redirect based on user role
+      if (result?.user?.role === "admin") {
+        router.push("/dashboard/admin");
+      } else if (result?.user?.role === "staff") {
+        router.push("/dashboard/staff");
+      } else {
+        // Regular user
+        router.push("/dashboard/user");
+      }
     } catch (err) {
       // Error is handled by context
     }

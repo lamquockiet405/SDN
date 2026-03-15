@@ -20,11 +20,7 @@ export const authService = {
   },
 
   async register(data: RegisterRequest): Promise<AuthResponse> {
-    const { confirmPassword, ...registerData } = data;
-    const response = await api.post<AuthResponse>(
-      "/auth/register",
-      registerData,
-    );
+    const response = await api.post<AuthResponse>("/auth/register", data);
     const { accessToken, refreshToken, user } = response.data;
 
     // Store tokens and user info
