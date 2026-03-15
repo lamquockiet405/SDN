@@ -4,17 +4,20 @@ import {
   AuthResponse,
   LoginRequest,
   RegisterRequest,
+  LoginResponse,
 } from "@/types/user";
 import { tokenUtils } from "@/lib/token-utils";
 
 export const authService = {
-  async login(credentials: LoginRequest): Promise<AuthResponse> {
-    const response = await api.post<AuthResponse>("/auth/login", credentials);
+  async login(credentials: LoginRequest): Promise<LoginResponse> {
+    const response = await api.post<LoginResponse>("/auth/login", credentials);
     const { accessToken, refreshToken, user } = response.data;
 
-    // Store tokens and user info
-    tokenUtils.setTokens(accessToken, refreshToken);
-    tokenUtils.setUser(user);
+    if (accessToken && refreshToken && user) {
+      // Store tokens and user info
+      tokenUtils.setTokens(accessToken, refreshToken);
+      tokenUtils.setUser(user);
+    }
 
     return response.data;
   },
@@ -98,6 +101,61 @@ export const authService = {
   ): Promise<{ success: boolean; message: string }> {
     const response = await api.post("/auth/reset-password", {
       token,
+      newPassword,
+      confirmPassword,
+    });
+    return response.data;
+  },
+
+  async enable2FA(password: string): Promise<{
+    success: boolean;
+    message: string;
+    qrCode: string;
+    secret: string;
+  }> {
+    const response = await api.post("/auth/2fa/enable", { password });
+    return response.data;
+  },
+
+  async verify2FA(otp: string): Promise<{ success: boolean; message: string }> {
+    const response = await api.post("/auth/2fa/verify", { otp });
+    return response.data;
+  },
+
+  async verify2FASetup(
+    otp: string,
+  ): Promise<{ success: boolean; message: string }> {
+    const response = await api.post("/auth/2fa/verify-setup", { otp });
+    return response.data;
+  },
+
+  async verify2FALogin(email: string, otp: string): Promise<AuthResponse> {
+    const response = await api.post<AuthResponse>("/auth/2fa/verify", {
+      email,
+      otp,
+    });
+
+    const { accessToken, refreshToken, user } = response.data;
+    tokenUtils.setTokens(accessToken, refreshToken);
+    tokenUtils.setUser(user);
+
+    return response.data;
+  },
+
+  async disable2FA(
+    password: string,
+  ): Promise<{ success: boolean; message: string }> {
+    const response = await api.post("/auth/2fa/disable", { password });
+    return response.data;
+  },
+
+  async changePassword(
+    currentPassword: string,
+    newPassword: string,
+    confirmPassword: string,
+  ): Promise<{ success: boolean; message: string }> {
+    const response = await api.post("/auth/change-password", {
+      currentPassword,
       newPassword,
       confirmPassword,
     });

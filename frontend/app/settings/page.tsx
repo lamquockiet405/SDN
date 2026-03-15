@@ -2,6 +2,7 @@
 
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useAuth } from "@/context/AuthContext";
+import { authService } from "@/services/authService";
 import { useState } from "react";
 import {
   User as UserIcon,
@@ -17,6 +18,7 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState("profile");
   const [isSaving, setIsSaving] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
 
   const [profileData, setProfileData] = useState({
     name: user?.name || "",
@@ -59,22 +61,40 @@ export default function SettingsPage() {
   };
 
   const handleChangePassword = async () => {
+    setErrorMessage("");
+
     if (securityData.newPassword !== securityData.confirmPassword) {
-      alert("Passwords do not match!");
+      setErrorMessage("Passwords do not match!");
+      return;
+    }
+
+    if (securityData.newPassword.length < 6) {
+      setErrorMessage("Password must be at least 6 characters!");
       return;
     }
 
     setIsSaving(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    setSuccessMessage("Password changed successfully!");
-    setSecurityData({
-      currentPassword: "",
-      newPassword: "",
-      confirmPassword: "",
-    });
-    setIsSaving(false);
-    setTimeout(() => setSuccessMessage(""), 3000);
+    try {
+      await authService.changePassword(
+        securityData.currentPassword,
+        securityData.newPassword,
+        securityData.confirmPassword,
+      );
+      setSuccessMessage("Password changed successfully!");
+      setSecurityData({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
+    } catch (error: any) {
+      setErrorMessage(
+        error?.response?.data?.message || "Failed to change password",
+      );
+    } finally {
+      setIsSaving(false);
+      setTimeout(() => setSuccessMessage(""), 3000);
+      setTimeout(() => setErrorMessage(""), 3000);
+    }
   };
 
   const handleSavePreferences = async () => {
@@ -148,6 +168,14 @@ export default function SettingsPage() {
             <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex gap-3">
               <AlertCircle className="text-success flex-shrink-0" size={20} />
               <p className="text-success font-medium">{successMessage}</p>
+            </div>
+          )}
+
+          {/* Error Message */}
+          {errorMessage && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex gap-3">
+              <AlertCircle className="text-red-600 flex-shrink-0" size={20} />
+              <p className="text-red-600 font-medium">{errorMessage}</p>
             </div>
           )}
 

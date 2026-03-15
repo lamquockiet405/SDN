@@ -9,6 +9,7 @@ const {
   resetPassword,
   forgotPasswordOTP,
   verifyPasswordResetOTP,
+  changePassword,
   enable2FA,
   verify2FA,
   disable2FA,
@@ -29,9 +30,11 @@ router.post("/refresh", refreshToken);
 
 // 2FA routes
 router.post("/2fa/verify", verify2FA);
+router.post("/2fa/verify-setup", protect, verify2FA);
 
 // Protected routes
 router.post("/logout", protect, logout);
+router.post("/change-password", protect, changePassword);
 router.post("/2fa/enable", protect, enable2FA);
 router.post("/2fa/disable", protect, disable2FA);
 

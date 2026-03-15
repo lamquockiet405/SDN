@@ -1,13 +1,25 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { Upload, Mail, Phone, MapPin, Lock, Eye, EyeOff } from "lucide-react";
+import { authService } from "@/services/authService";
+import { Upload, Mail, Phone, Lock } from "lucide-react";
 
 export default function UserProfilePage() {
   const { user } = useAuth();
+  const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState<
+    { type: "success" | "error"; text: string } | undefined
+  >(undefined);
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
   const [formData, setFormData] = useState({
     name: user?.name || "",
     email: user?.email || "",
@@ -23,6 +35,60 @@ export default function UserProfilePage() {
   const handleSave = () => {
     setIsEditing(false);
     // TODO: Save profile changes via API
+  };
+
+  const handlePasswordInput = (field: string, value: string) => {
+    setPasswordForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleChangePassword = async () => {
+    setPasswordMessage(undefined);
+
+    if (!passwordForm.currentPassword) {
+      setPasswordMessage({
+        type: "error",
+        text: "Please enter your current password.",
+      });
+      return;
+    }
+
+    if (passwordForm.newPassword.length < 6) {
+      setPasswordMessage({
+        type: "error",
+        text: "New password must be at least 6 characters.",
+      });
+      return;
+    }
+
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordMessage({ type: "error", text: "Passwords do not match." });
+      return;
+    }
+
+    setIsChangingPassword(true);
+    try {
+      await authService.changePassword(
+        passwordForm.currentPassword,
+        passwordForm.newPassword,
+        passwordForm.confirmPassword,
+      );
+      setPasswordMessage({
+        type: "success",
+        text: "Password updated successfully.",
+      });
+      setPasswordForm({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
+    } catch (error: any) {
+      setPasswordMessage({
+        type: "error",
+        text: error?.response?.data?.message || "Failed to update password.",
+      });
+    } finally {
+      setIsChangingPassword(false);
+    }
   };
 
   return (
@@ -167,17 +233,114 @@ export default function UserProfilePage() {
             </h3>
 
             <div className="space-y-3">
-              <button className="w-full text-left px-4 py-3 border border-slate-200 rounded-lg hover:bg-slate-50 transition font-medium text-slate-900 flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <Lock size={18} />
-                  Change Password
-                </span>
-                <span className="text-slate-400">→</span>
-              </button>
+              <div className="border border-slate-200 rounded-lg">
+                <button
+                  onClick={() => setShowChangePassword((prev) => !prev)}
+                  className="w-full text-left px-4 py-3 hover:bg-slate-50 transition font-medium text-slate-900 flex items-center justify-between"
+                >
+                  <span className="flex items-center gap-2">
+                    <Lock size={18} />
+                    Change Password
+                  </span>
+                  <span className="text-slate-400">→</span>
+                </button>
 
-              <button className="w-full text-left px-4 py-3 border border-slate-200 rounded-lg hover:bg-slate-50 transition font-medium text-slate-900 flex items-center justify-between">
-                <span>Enable Two-Factor Authentication</span>
-                <span className="text-slate-400">→</span>
+                {showChangePassword && (
+                  <div className="px-4 pb-4 space-y-3">
+                    {passwordMessage && (
+                      <div
+                        className={`rounded-md px-3 py-2 text-sm border ${
+                          passwordMessage.type === "success"
+                            ? "bg-green-50 border-green-200 text-green-700"
+                            : "bg-red-50 border-red-200 text-red-700"
+                        }`}
+                      >
+                        {passwordMessage.text}
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        Current Password
+                      </label>
+                      <input
+                        type="password"
+                        value={passwordForm.currentPassword}
+                        onChange={(e) =>
+                          handlePasswordInput(
+                            "currentPassword",
+                            e.target.value,
+                          )
+                        }
+                        className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        New Password
+                      </label>
+                      <input
+                        type="password"
+                        value={passwordForm.newPassword}
+                        onChange={(e) =>
+                          handlePasswordInput("newPassword", e.target.value)
+                        }
+                        className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        Confirm Password
+                      </label>
+                      <input
+                        type="password"
+                        value={passwordForm.confirmPassword}
+                        onChange={(e) =>
+                          handlePasswordInput(
+                            "confirmPassword",
+                            e.target.value,
+                          )
+                        }
+                        className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+
+                    <button
+                      onClick={handleChangePassword}
+                      disabled={isChangingPassword}
+                      className="w-full px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 disabled:bg-slate-300 transition font-medium"
+                    >
+                      {isChangingPassword ? "Updating..." : "Update Password"}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={() => router.push("/dashboard/user?tab=2fa")}
+                className={`w-full text-left px-4 py-3 border rounded-lg transition font-medium flex items-center justify-between ${
+                  user?.isTwoFactorEnabled
+                    ? "border-green-200 bg-green-50 text-green-900 hover:bg-green-100"
+                    : "border-slate-200 text-slate-900 hover:bg-slate-50"
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <span>{user?.isTwoFactorEnabled ? "✓" : "○"}</span>
+                  {user?.isTwoFactorEnabled
+                    ? "Reset Two-Factor Authentication"
+                    : "Setup Two-Factor Authentication"}
+                </span>
+                <span
+                  className={
+                    user?.isTwoFactorEnabled
+                      ? "text-green-600"
+                      : "text-slate-400"
+                  }
+                >
+                  →
+                </span>
               </button>
 
               <button className="w-full text-left px-4 py-3 border border-slate-200 rounded-lg hover:bg-slate-50 transition font-medium text-slate-900 flex items-center justify-between">
