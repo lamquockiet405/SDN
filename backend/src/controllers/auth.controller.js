@@ -146,11 +146,40 @@ exports.login = async (req, res) => {
       });
     }
 
+    const ipAddress = getIpAddress(req);
+    const userAgent = getUserAgent(req);
+
+    // Check if user has a password (might be a Google-only account)
+    if (!user.password) {
+      console.log("No password for user:", user.email);
+      await logAudit(user._id, "LOGIN", ipAddress, userAgent, "failed");
+
+      return res.status(401).json({
+        success: false,
+        message:
+          "This account was created with Google login. Please use Google login or set a password in settings.",
+      });
+    }
+
     // Check password
-    const isMatch = await user.matchPassword(password);
+    console.log("Attempting password match for user:", user.email);
+    console.log("Has password field:", !!user.password);
+
+    let isMatch = false;
+    try {
+      isMatch = await user.matchPassword(password);
+      console.log("Password match result:", isMatch);
+    } catch (error) {
+      console.error("Error comparing password:", error);
+      await logAudit(user._id, "LOGIN", ipAddress, userAgent, "failed");
+      return res.status(500).json({
+        success: false,
+        message: "Error during login process",
+      });
+    }
+
     if (!isMatch) {
-      const ipAddress = getIpAddress(req);
-      const userAgent = getUserAgent(req);
+      console.log("Password mismatch for user:", user.email);
       await logAudit(user._id, "LOGIN", ipAddress, userAgent, "failed");
 
       return res.status(401).json({
@@ -159,28 +188,7 @@ exports.login = async (req, res) => {
       });
     }
 
-    const ipAddress = getIpAddress(req);
-    const userAgent = getUserAgent(req);
-
-    // If 2FA is enabled, send OTP
-    if (user.isTwoFactorEnabled) {
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
-      const otpExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
-
-      user.otpSecret = otp;
-      user.otpExpires = otpExpires;
-      await user.save();
-
-      // Send OTP email
-      await sendOTPEmail(email, otp);
-
-      return res.status(200).json({
-        success: true,
-        message: "OTP sent to email. Please verify to login.",
-        requiresOTP: true,
-        email: email,
-      });
-    }
+    console.log("Login successful for user:", user.email);
 
     // Generate tokens
     const { accessToken, refreshToken } = generateTokens(user._id);
@@ -625,7 +633,31 @@ exports.verifyPasswordResetOTP = async (req, res) => {
 // @access  Private
 exports.enable2FA = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
+    const { password } = req.body;
+
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        message: "Password is required to enable 2FA",
+      });
+    }
+
+    const user = await User.findById(req.user._id).select("+password");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const isMatch = await user.matchPassword(password);
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid password",
+      });
+    }
 
     // Generate OTP secret and QR code
     const { secret, qrCode } = await generateOTPSecret(user.email);
@@ -674,21 +706,20 @@ exports.verify2FA = async (req, res) => {
         });
       }
 
-      // Check if OTP is valid and not expired
-      if (
-        user.otpSecret !== otp ||
-        !user.otpExpires ||
-        user.otpExpires < new Date()
-      ) {
+      if (!user.isTwoFactorEnabled || !user.twoFactorSecret) {
         return res.status(401).json({
           success: false,
-          message: "Invalid or expired OTP",
+          message: "2FA is not enabled for this account",
         });
       }
 
-      // Clear OTP
-      user.otpSecret = null;
-      user.otpExpires = null;
+      const isValid = verifyOTP(user.twoFactorSecret, otp);
+      if (!isValid) {
+        return res.status(401).json({
+          success: false,
+          message: "Invalid OTP code",
+        });
+      }
 
       // Generate tokens
       const { accessToken, refreshToken } = generateTokens(user._id);
@@ -710,6 +741,13 @@ exports.verify2FA = async (req, res) => {
     }
 
     // If verifying 2FA setup
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
+
     const user = await User.findById(req.user._id);
 
     if (!user.twoFactorSecret) {
@@ -794,6 +832,78 @@ exports.disable2FA = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error disabling 2FA",
+      error: error.message,
+    });
+  }
+};
+
+// @route   POST /api/auth/change-password
+// @desc    Change password (for logged in users)
+// @access  Private
+exports.changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword, confirmPassword } = req.body;
+
+    // Validation
+    if (!newPassword || !confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide new password and confirmation",
+      });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Passwords do not match",
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters",
+      });
+    }
+
+    // Get user with password field
+    const user = await User.findById(req.user._id).select("+password");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // If user has a password, verify current password
+    if (user.password && currentPassword) {
+      const isMatch = await user.matchPassword(currentPassword);
+      if (!isMatch) {
+        return res.status(401).json({
+          success: false,
+          message: "Current password is incorrect",
+        });
+      }
+    }
+
+    // Update password
+    user.password = newPassword;
+    await user.save();
+
+    const ipAddress = getIpAddress(req);
+    const userAgent = getUserAgent(req);
+    await logAudit(user._id, "PASSWORD_CHANGE", ipAddress, userAgent);
+
+    res.status(200).json({
+      success: true,
+      message: "Password changed successfully",
+    });
+  } catch (error) {
+    console.error("Change password error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error changing password",
       error: error.message,
     });
   }

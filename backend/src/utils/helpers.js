@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const AuditLog = require("../models/AuditLog");
 
 // Get IP address from request
 exports.getIpAddress = (req) => {
@@ -27,4 +28,26 @@ exports.hashToken = (token) => {
 // Generate 6-digit OTP
 exports.generateOTP = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
+// Log audit event
+exports.logAuditEvent = async (
+  userId,
+  action,
+  ipAddress,
+  status = "success",
+  metadata = {},
+) => {
+  try {
+    await AuditLog.create({
+      userId,
+      action,
+      ipAddress,
+      status,
+      metadata,
+    });
+  } catch (error) {
+    console.error("Error logging audit event:", error);
+    // Don't throw - audit logging should not break the main operation
+  }
 };

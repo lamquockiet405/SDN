@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Calendar,
   Zap,
@@ -16,6 +16,7 @@ import {
   Search,
   Bell,
   ChevronLeft,
+  Shield,
 } from "lucide-react";
 import UserBookingDashboard from "@/components/dashboard/UserBookingDashboard";
 import UserProfilePage from "@/components/dashboard/UserProfilePage";
@@ -23,10 +24,22 @@ import UserPaymentsPage from "@/components/dashboard/UserPaymentsPage";
 import UserFeedbackPage from "@/components/dashboard/UserFeedbackPage";
 import UserRoomsPage from "@/components/dashboard/UserRoomsPage";
 import UserSettingsPage from "@/components/dashboard/UserSettingsPage";
+import UserTwoFactorPage from "@/components/dashboard/UserTwoFactorPage";
+
+const VALID_TABS = new Set([
+  "bookings",
+  "rooms",
+  "payments",
+  "feedback",
+  "profile",
+  "2fa",
+  "settings",
+]);
 
 export default function UserDashboard() {
   const { user, logout, isLoading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeNav, setActiveNav] = useState("bookings");
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -37,6 +50,22 @@ export default function UserDashboard() {
       router.push("/login");
     }
   }, [user, isLoading, router]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const shouldRedirect = localStorage.getItem("redirectToProfile");
+    if (shouldRedirect === "1") {
+      localStorage.removeItem("redirectToProfile");
+      setActiveNav("profile");
+    }
+  }, []);
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab && VALID_TABS.has(tab)) {
+      setActiveNav(tab);
+    }
+  }, [searchParams]);
 
   // Redirect to home if user is admin or staff
   useEffect(() => {
@@ -75,6 +104,7 @@ export default function UserDashboard() {
     { id: "payments", label: "Payments", icon: CreditCard },
     { id: "feedback", label: "Feedback", icon: MessageSquare },
     { id: "profile", label: "Profile", icon: User },
+    { id: "2fa", label: "2FA", icon: Shield },
     { id: "settings", label: "Settings", icon: Settings },
   ];
 
@@ -280,6 +310,7 @@ export default function UserDashboard() {
           {activeNav === "bookings" && <UserBookingDashboard />}
           {activeNav === "rooms" && <UserRoomsPage />}
           {activeNav === "profile" && <UserProfilePage />}
+          {activeNav === "2fa" && <UserTwoFactorPage />}
           {activeNav === "payments" && <UserPaymentsPage />}
           {activeNav === "feedback" && <UserFeedbackPage />}
           {activeNav === "settings" && <UserSettingsPage />}

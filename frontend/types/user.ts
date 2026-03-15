@@ -4,6 +4,7 @@ export interface User {
   name: string;
   avatar?: string;
   role: "user" | "admin";
+  isTwoFactorEnabled?: boolean;
   createdAt: string;
 }
 
@@ -11,6 +12,16 @@ export interface AuthResponse {
   accessToken: string;
   refreshToken: string;
   user: User;
+}
+
+export interface LoginResponse {
+  success: boolean;
+  message?: string;
+  requiresOTP?: boolean;
+  email?: string;
+  accessToken?: string;
+  refreshToken?: string;
+  user?: User;
 }
 
 export interface LoginRequest {

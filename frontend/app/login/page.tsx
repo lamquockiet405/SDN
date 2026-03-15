@@ -17,6 +17,9 @@ export default function LoginPage() {
   const { login, isLoading, error, clearError } = useAuth();
   const [formData, setFormData] = useState({ email: "", password: "" });
   const [localErrors, setLocalErrors] = useState<Record<string, string>>({});
+  const [requiresOtp, setRequiresOtp] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
+  const [pendingEmail, setPendingEmail] = useState("");
 
   // Load and initialize Google Sign-In script
   useEffect(() => {
@@ -168,12 +171,52 @@ export default function LoginPage() {
     }
 
     try {
-      await login(formData);
+      const response = await login(formData);
 
-      // After successful login, the user will be in context
-      // The redirect will happen based on stored user data
-    } catch (err) {
+      if (response?.requiresOTP && response?.email) {
+        setRequiresOtp(true);
+        setPendingEmail(response.email);
+        return;
+      }
+
+      // After successful login, redirect based on user role
+      if (response?.user?.role === "admin") {
+        router.push("/dashboard/admin");
+      } else if (response?.user?.role === "staff") {
+        router.push("/dashboard/staff");
+      } else {
+        router.push("/dashboard/user");
+      }
+    } catch (err: any) {
       // Error is handled by context
+      console.error("Login error:", err);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    clearError();
+
+    if (!otpCode || otpCode.length !== 6) {
+      setLocalErrors({ otp: "Please enter the 6-digit code." });
+      return;
+    }
+
+    try {
+      const { authService } = await import("@/services/authService");
+      const response = await authService.verify2FALogin(
+        pendingEmail,
+        otpCode.trim(),
+      );
+
+      if (response.user?.role === "admin") {
+        router.push("/dashboard/admin");
+      } else if (response.user?.role === "staff") {
+        router.push("/dashboard/staff");
+      } else {
+        router.push("/dashboard/user");
+      }
+    } catch (err) {
+      console.error("2FA verification error:", err);
     }
   };
 
@@ -282,16 +325,49 @@ export default function LoginPage() {
               </Link>
             </div>
 
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full bg-primary hover:bg-blue-600 disabled:bg-gray-300 text-white font-semibold py-2 rounded-btn transition-colors flex items-center justify-center gap-2"
-            >
-              <LogIn size={20} />
-              {isLoading ? "Logging in..." : "Login"}
-            </button>
+            {!requiresOtp && (
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full py-2 px-4 bg-primary text-white rounded-btn hover:bg-blue-600 transition font-medium flex items-center justify-center gap-2 disabled:opacity-70"
+              >
+                {isLoading ? (
+                  "Signing in..."
+                ) : (
+                  <>
+                    <LogIn size={18} />
+                    Sign In
+                  </>
+                )}
+              </button>
+            )}
           </form>
+
+          {requiresOtp && (
+            <div className="mt-6 space-y-3">
+              <label className="block text-sm font-medium text-gray-700">
+                Enter 2FA Code
+              </label>
+              <input
+                type="text"
+                value={otpCode}
+                onChange={(e) => setOtpCode(e.target.value)}
+                placeholder="123456"
+                maxLength={6}
+                className="w-full px-4 py-2 border rounded-btn focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              {localErrors.otp && (
+                <p className="text-danger text-sm">{localErrors.otp}</p>
+              )}
+              <button
+                type="button"
+                onClick={handleVerifyOtp}
+                className="w-full py-2 px-4 bg-green-600 text-white rounded-btn hover:bg-green-700 transition font-medium"
+              >
+                Verify 2FA Code
+              </button>
+            </div>
+          )}
 
           {/* Divider */}
           <div className="my-6 flex items-center">
