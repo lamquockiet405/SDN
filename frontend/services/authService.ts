@@ -20,11 +20,7 @@ export const authService = {
   },
 
   async register(data: RegisterRequest): Promise<AuthResponse> {
-    const { confirmPassword, ...registerData } = data;
-    const response = await api.post<AuthResponse>(
-      "/auth/register",
-      registerData,
-    );
+    const response = await api.post<AuthResponse>("/auth/register", data);
     const { accessToken, refreshToken, user } = response.data;
 
     // Store tokens and user info
@@ -64,6 +60,48 @@ export const authService = {
     const user = response.data;
     tokenUtils.setUser(user);
     return user;
+  },
+
+  async forgotPassword(
+    email: string,
+  ): Promise<{ success: boolean; message: string }> {
+    const response = await api.post("/auth/forgot-password", { email });
+    return response.data;
+  },
+
+  async forgotPasswordOTP(
+    email: string,
+  ): Promise<{ success: boolean; message: string }> {
+    const response = await api.post("/auth/forgot-password-otp", { email });
+    return response.data;
+  },
+
+  async verifyPasswordResetOTP(
+    email: string,
+    otp: string,
+    newPassword: string,
+    confirmPassword: string,
+  ): Promise<{ success: boolean; message: string }> {
+    const response = await api.post("/auth/verify-password-reset-otp", {
+      email,
+      otp,
+      newPassword,
+      confirmPassword,
+    });
+    return response.data;
+  },
+
+  async resetPassword(
+    token: string,
+    newPassword: string,
+    confirmPassword: string,
+  ): Promise<{ success: boolean; message: string }> {
+    const response = await api.post("/auth/reset-password", {
+      token,
+      newPassword,
+      confirmPassword,
+    });
+    return response.data;
   },
 
   getStoredUser(): User | null {

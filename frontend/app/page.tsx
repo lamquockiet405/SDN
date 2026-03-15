@@ -14,15 +14,21 @@ import {
 } from "lucide-react";
 
 export default function Home() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const router = useRouter();
 
-  // If already authenticated, redirect to dashboard
+  // If already authenticated, redirect to appropriate dashboard based on role
   useEffect(() => {
-    if (!isLoading && isAuthenticated) {
-      router.push("/dashboard");
+    if (!isLoading && isAuthenticated && user) {
+      if (user.role === "admin") {
+        router.push("/dashboard/admin");
+      } else if (user.role === "staff") {
+        router.push("/dashboard/staff");
+      } else {
+        router.push("/dashboard/user");
+      }
     }
-  }, [isAuthenticated, isLoading, router]);
+  }, [isAuthenticated, isLoading, user, router]);
 
   if (isLoading) {
     return (
