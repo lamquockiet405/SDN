@@ -2,7 +2,9 @@
 
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useAuth } from "@/context/AuthContext";
-import { useState } from "react";
+import { authService } from "@/services/authService";
+import { userService } from "@/services/userService";
+import { useEffect, useState } from "react";
 import {
   User as UserIcon,
   Lock,
@@ -17,6 +19,7 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState("profile");
   const [isSaving, setIsSaving] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
 
   const [profileData, setProfileData] = useState({
     name: user?.name || "",
@@ -41,6 +44,24 @@ export default function SettingsPage() {
     setProfileData({ ...profileData, [field]: value });
   };
 
+  useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        const profile = await userService.getMyProfile();
+        setProfileData((prev) => ({
+          ...prev,
+          name: profile.name || prev.name,
+          email: profile.email || prev.email,
+          phone: profile.phone || prev.phone,
+        }));
+      } catch (error) {
+        console.error("Failed to load profile", error);
+      }
+    };
+
+    loadProfile();
+  }, []);
+
   const handleSecurityChange = (field: string, value: string) => {
     setSecurityData({ ...securityData, [field]: value });
   };
@@ -50,31 +71,66 @@ export default function SettingsPage() {
   };
 
   const handleSaveProfile = async () => {
+    setErrorMessage("");
     setIsSaving(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    setSuccessMessage("Profile updated successfully!");
-    setIsSaving(false);
-    setTimeout(() => setSuccessMessage(""), 3000);
+    try {
+      const updated = await userService.updateMyProfile({
+        name: profileData.name,
+        phone: profileData.phone,
+      });
+      setProfileData((prev) => ({
+        ...prev,
+        name: updated.name || prev.name,
+        email: updated.email || prev.email,
+        phone: updated.phone || prev.phone,
+      }));
+      setSuccessMessage("Profile updated successfully!");
+    } catch (error: any) {
+      setErrorMessage(
+        error?.response?.data?.message || "Failed to update profile",
+      );
+    } finally {
+      setIsSaving(false);
+      setTimeout(() => setSuccessMessage(""), 3000);
+      setTimeout(() => setErrorMessage(""), 3000);
+    }
   };
 
   const handleChangePassword = async () => {
+    setErrorMessage("");
+
     if (securityData.newPassword !== securityData.confirmPassword) {
-      alert("Passwords do not match!");
+      setErrorMessage("Passwords do not match!");
+      return;
+    }
+
+    if (securityData.newPassword.length < 6) {
+      setErrorMessage("Password must be at least 6 characters!");
       return;
     }
 
     setIsSaving(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    setSuccessMessage("Password changed successfully!");
-    setSecurityData({
-      currentPassword: "",
-      newPassword: "",
-      confirmPassword: "",
-    });
-    setIsSaving(false);
-    setTimeout(() => setSuccessMessage(""), 3000);
+    try {
+      await authService.changePassword(
+        securityData.currentPassword,
+        securityData.newPassword,
+        securityData.confirmPassword,
+      );
+      setSuccessMessage("Password changed successfully!");
+      setSecurityData({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
+    } catch (error: any) {
+      setErrorMessage(
+        error?.response?.data?.message || "Failed to change password",
+      );
+    } finally {
+      setIsSaving(false);
+      setTimeout(() => setSuccessMessage(""), 3000);
+      setTimeout(() => setErrorMessage(""), 3000);
+    }
   };
 
   const handleSavePreferences = async () => {
@@ -148,6 +204,14 @@ export default function SettingsPage() {
             <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex gap-3">
               <AlertCircle className="text-success flex-shrink-0" size={20} />
               <p className="text-success font-medium">{successMessage}</p>
+            </div>
+          )}
+
+          {/* Error Message */}
+          {errorMessage && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex gap-3">
+              <AlertCircle className="text-red-600 flex-shrink-0" size={20} />
+              <p className="text-red-600 font-medium">{errorMessage}</p>
             </div>
           )}
 
