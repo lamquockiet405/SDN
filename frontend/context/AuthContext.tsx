@@ -12,6 +12,7 @@ import {
   AuthResponse,
   LoginRequest,
   RegisterRequest,
+  LoginResponse,
 } from "@/types/user";
 import { authService } from "@/services/authService";
 import { tokenUtils } from "@/lib/token-utils";
@@ -21,7 +22,7 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   error: string | null;
-  login: (credentials: LoginRequest) => Promise<void>;
+  login: (credentials: LoginRequest) => Promise<LoginResponse>;
   register: (data: RegisterRequest) => Promise<void>;
   logout: () => Promise<void>;
   clearError: () => void;
@@ -63,7 +64,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
     try {
       const response = await authService.login(credentials);
-      setUser(response.user);
+      if (response.user) {
+        setUser(response.user);
+      }
+      return response;
     } catch (err: any) {
       const message =
         err.response?.data?.message ||

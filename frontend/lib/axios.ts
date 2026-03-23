@@ -32,9 +32,14 @@ api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const originalRequest = error.config as any;
+    const requestUrl = originalRequest?.url || "";
+    const is2FASetupRequest = requestUrl.includes("/auth/2fa/verify-setup");
 
     // If error is 401 and we haven't already tried to refresh
     if (error.response?.status === 401 && !originalRequest._retry) {
+      if (is2FASetupRequest) {
+        return Promise.reject(error);
+      }
       if (isRefreshing) {
         // Queue the request to retry after refresh
         return new Promise((resolve) => {
@@ -61,10 +66,10 @@ api.interceptors.response.use(
           return Promise.reject(error);
         }
 
-        const response = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/refresh`,
-          { refreshToken },
-        );
+        const baseUrl =
+          api.defaults.baseURL || process.env.NEXT_PUBLIC_API_BASE_URL || "";
+        const refreshUrl = `${baseUrl}`.replace(/\/$/, "") + "/auth/refresh";
+        const response = await axios.post(refreshUrl, { refreshToken });
 
         const { accessToken, refreshToken: newRefreshToken } = response.data;
 

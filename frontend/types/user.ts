@@ -3,7 +3,13 @@ export interface User {
   email: string;
   name: string;
   avatar?: string;
-  role: "user" | "admin";
+  role: "user" | "staff" | "admin";
+  status?: "active" | "inactive" | "locked";
+  phone?: string;
+  department?: string;
+  lastLogin?: string;
+  violationCount?: number;
+  isTwoFactorEnabled?: boolean;
   createdAt: string;
 }
 
@@ -11,6 +17,16 @@ export interface AuthResponse {
   accessToken: string;
   refreshToken: string;
   user: User;
+}
+
+export interface LoginResponse {
+  success: boolean;
+  message?: string;
+  requiresOTP?: boolean;
+  email?: string;
+  accessToken?: string;
+  refreshToken?: string;
+  user?: User;
 }
 
 export interface LoginRequest {
