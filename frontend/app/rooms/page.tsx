@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { RoomCard } from "@/components/RoomCard";
 import { Room } from "@/types/room";
-import { Search, Filter, Users, DollarSign, Star } from "lucide-react";
+import { roomService } from "@/services/roomService";
+import { Search } from "lucide-react";
+import Link from "next/link";
 
 export default function RoomsPage() {
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -17,85 +19,24 @@ export default function RoomsPage() {
     availability: "all",
   });
 
-  // Mock data
-  const mockRooms: Room[] = [
-    {
-      id: "1",
-      name: "Meeting Room A",
-      capacity: 8,
-      description: "Perfect for team meetings and discussions",
-      rating: 4.8,
-      pricePerHour: 50,
-      equipment: ["Projector", "Whiteboard", "Video Conference"],
-      floor: 2,
-      isAvailable: true,
-    },
-    {
-      id: "2",
-      name: "Study Room B",
-      capacity: 4,
-      description: "Quiet study space for focused work",
-      rating: 4.6,
-      pricePerHour: 30,
-      equipment: ["Desk", "Chair", "Bookshelf"],
-      floor: 1,
-      isAvailable: true,
-    },
-    {
-      id: "3",
-      name: "Lab Room C",
-      capacity: 20,
-      description: "Equipped laboratory for research",
-      rating: 4.9,
-      pricePerHour: 80,
-      equipment: ["Lab Equipment", "Computers", "Monitors"],
-      floor: 3,
-      isAvailable: false,
-    },
-    {
-      id: "4",
-      name: "Conference Room D",
-      capacity: 12,
-      description: "Large conference space with advanced AV",
-      rating: 4.7,
-      pricePerHour: 60,
-      equipment: ["4K Projector", "Sound System", "WiFi"],
-      floor: 2,
-      isAvailable: true,
-    },
-    {
-      id: "5",
-      name: "Creative Studio E",
-      capacity: 6,
-      description: "Creative workspace for collaborative projects",
-      rating: 4.5,
-      pricePerHour: 40,
-      equipment: ["Whiteboard", "Creative Tools", "Lighting"],
-      floor: 1,
-      isAvailable: true,
-    },
-    {
-      id: "6",
-      name: "Quiet Corner F",
-      capacity: 2,
-      description: "Intimate space for one-on-one meetings",
-      rating: 4.4,
-      pricePerHour: 20,
-      equipment: ["Table", "Chairs"],
-      floor: 1,
-      isAvailable: true,
-    },
-  ];
-
   useEffect(() => {
-    setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-      setRooms(mockRooms);
-      setFilteredRooms(mockRooms);
-      setIsLoading(false);
-    }, 500);
+    fetchRooms();
   }, []);
+
+  const fetchRooms = async () => {
+    try {
+      setIsLoading(true);
+      const data = await roomService.getRooms({ page: 1, limit: 100 });
+      setRooms(data.rooms);
+      setFilteredRooms(data.rooms);
+    } catch (error) {
+      console.error("Failed to load rooms", error);
+      setRooms([]);
+      setFilteredRooms([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Apply filters and search
   useEffect(() => {
@@ -137,8 +78,7 @@ export default function RoomsPage() {
   }, [searchTerm, filters, rooms]);
 
   const handleBooking = (roomId: string) => {
-    alert(`Booking room ${roomId}. Redirecting to booking form...`);
-    // In a real app, navigate to booking page
+    window.location.href = `/rooms/${roomId}`;
   };
 
   return (
@@ -265,6 +205,12 @@ export default function RoomsPage() {
             <span className="font-semibold">{filteredRooms.length}</span>{" "}
             {filteredRooms.length === 1 ? "room" : "rooms"}
           </p>
+          <Link
+            href="/dashboard/staff"
+            className="text-sm text-primary hover:underline"
+          >
+            Staff/Admin management
+          </Link>
         </div>
 
         {/* Loading State */}
