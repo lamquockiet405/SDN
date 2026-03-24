@@ -1,93 +1,132 @@
 "use client";
 
-import { useState } from "react";
-import { Star, Send, MessageSquare, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Star, Send, MessageSquare } from "lucide-react";
+import { reviewService } from "@/services/reviewService";
+import { bookingService } from "@/services/bookingService";
+import { Review } from "@/types/review";
 
-interface Feedback {
+interface BookingOption {
   id: string;
   roomId: string;
   roomName: string;
-  bookingDate: string;
-  rating: number;
-  comment: string;
-  submittedAt: string;
+  date: string;
+  time: string;
 }
 
-interface CompletedBooking {
-  id: string;
-  roomName: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-}
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error &&
+    typeof (error as { response?: unknown }).response === "object" &&
+    (error as { response?: { data?: { message?: string } } }).response?.data
+      ?.message
+  ) {
+    return (error as { response: { data: { message: string } } }).response.data
+      .message;
+  }
+
+  return fallback;
+};
+
+const getRoomDisplay = (review: Review) => {
+  if (typeof review.roomId === "object") {
+    return review.roomId.name || review.roomId.location || review.roomId._id;
+  }
+
+  return review.roomId;
+};
 
 export default function UserFeedbackPage() {
   const [activeTab, setActiveTab] = useState<"submit" | "history">("submit");
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState("");
-  const [selectedBooking, setSelectedBooking] = useState<string>("");
+  const [selectedBooking, setSelectedBooking] = useState("");
+  const [bookingOptions, setBookingOptions] = useState<BookingOption[]>([]);
+  const [feedbackList, setFeedbackList] = useState<Review[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const [feedbackList] = useState<Feedback[]>([
-    {
-      id: "f1",
-      roomId: "room1",
-      roomName: "Study Room A",
-      bookingDate: "2025-03-01",
-      rating: 5,
-      comment:
-        "Excellent room with great facilities. Quiet and comfortable environment.",
-      submittedAt: "2025-03-02",
-    },
-    {
-      id: "f2",
-      roomId: "room2",
-      roomName: "Lab Room B",
-      bookingDate: "2025-02-28",
-      rating: 4,
-      comment: "Good equipment but a bit crowded during peak hours.",
-      submittedAt: "2025-02-28",
-    },
-  ]);
+  const fetchData = async () => {
+    try {
+      setIsLoading(true);
+      const [reviewsRes, bookingsRes] = await Promise.all([
+        reviewService.getMyReviews(1, 100),
+        bookingService.getBookingHistory(1, 100),
+      ]);
 
-  const [completedBookings] = useState<CompletedBooking[]>([
-    {
-      id: "b1",
-      roomName: "Study Room A",
-      date: "2025-03-10",
-      startTime: "10:00",
-      endTime: "12:00",
-    },
-    {
-      id: "b2",
-      roomName: "Lab Room B",
-      date: "2025-03-08",
-      startTime: "14:00",
-      endTime: "16:00",
-    },
-    {
-      id: "b3",
-      roomName: "Meeting Room C",
-      date: "2025-03-05",
-      startTime: "09:00",
-      endTime: "11:00",
-    },
-  ]);
+      setFeedbackList(reviewsRes.data || []);
 
-  const handleSubmitFeedback = () => {
-    console.log({
-      bookingId: selectedBooking,
-      rating,
-      comment,
-    });
-    setRating(0);
-    setComment("");
-    setSelectedBooking("");
-    // TODO: Submit feedback via API
+      const completedBookings = (bookingsRes.bookings || []).filter(
+        (item) => item.status === "checked_out" || item.status === "completed",
+      );
+
+      const mapped = completedBookings.map((booking) => {
+        const roomName =
+          typeof booking.roomId === "object"
+            ? booking.roomId.name ||
+              booking.roomId.location ||
+              booking.roomId._id
+            : booking.roomId;
+
+        const roomId =
+          typeof booking.roomId === "object"
+            ? booking.roomId._id
+            : booking.roomId;
+
+        return {
+          id: booking._id || booking.id || "",
+          roomId,
+          roomName,
+          date: new Date(booking.startTime).toLocaleDateString(),
+          time: `${new Date(booking.startTime).toLocaleTimeString()} - ${new Date(
+            booking.endTime,
+          ).toLocaleTimeString()}`,
+        };
+      });
+
+      setBookingOptions(mapped);
+    } catch (error) {
+      console.error("Failed to fetch user feedback data", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const selectedBookingData = useMemo(
+    () => bookingOptions.find((item) => item.id === selectedBooking),
+    [bookingOptions, selectedBooking],
+  );
+
+  const handleSubmitFeedback = async () => {
+    if (!selectedBookingData) {
+      return;
+    }
+
+    try {
+      await reviewService.submitReview({
+        roomId: selectedBookingData.roomId,
+        bookingId: selectedBookingData.id,
+        rating,
+        comment,
+      });
+
+      setRating(0);
+      setComment("");
+      setSelectedBooking("");
+      await fetchData();
+      setActiveTab("history");
+    } catch (error) {
+      alert(getErrorMessage(error, "Submit feedback failed"));
+    }
   };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-slate-900">Feedback</h1>
         <p className="text-slate-600 mt-2">
@@ -95,7 +134,6 @@ export default function UserFeedbackPage() {
         </p>
       </div>
 
-      {/* Tabs */}
       <div className="flex gap-6 border-b border-slate-200">
         <button
           onClick={() => setActiveTab("submit")}
@@ -121,15 +159,15 @@ export default function UserFeedbackPage() {
         </button>
       </div>
 
-      {/* Submit Feedback Tab */}
-      {activeTab === "submit" && (
+      {isLoading && <div className="text-slate-500">Loading...</div>}
+
+      {!isLoading && activeTab === "submit" && (
         <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
           <h2 className="text-xl font-bold text-slate-900 mb-6">
             Submit New Feedback
           </h2>
 
           <div className="max-w-2xl space-y-6">
-            {/* Booking Selection */}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
                 Which booking would you like to review? *
@@ -140,16 +178,14 @@ export default function UserFeedbackPage() {
                 className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               >
                 <option value="">Select a completed booking...</option>
-                {completedBookings.map((booking) => (
+                {bookingOptions.map((booking) => (
                   <option key={booking.id} value={booking.id}>
-                    {booking.roomName} - {booking.date} ({booking.startTime} -
-                    {booking.endTime})
+                    {booking.roomName} - {booking.date} ({booking.time})
                   </option>
                 ))}
               </select>
             </div>
 
-            {/* Rating */}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-3">
                 How would you rate this room? *
@@ -172,25 +208,16 @@ export default function UserFeedbackPage() {
                   </button>
                 ))}
               </div>
-              {rating > 0 && (
-                <p className="mt-2 text-sm text-slate-600">
-                  You rated this room{" "}
-                  <span className="font-semibold text-primary">
-                    {rating} out of 5
-                  </span>
-                </p>
-              )}
             </div>
 
-            {/* Comment */}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
-                Your Comment
+                Your Comment *
               </label>
               <textarea
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
-                placeholder="Tell us about your experience... (optional)"
+                placeholder="Tell us about your experience..."
                 className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary resize-vertical"
                 rows={5}
               ></textarea>
@@ -199,33 +226,12 @@ export default function UserFeedbackPage() {
               </p>
             </div>
 
-            {/* Suggestions */}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-3">
-                What could we improve?
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  "Cleanliness",
-                  "Comfort",
-                  "Equipment",
-                  "Temperature",
-                  "Noise Level",
-                  "WiFi Speed",
-                ].map((item) => (
-                  <label key={item} className="flex items-center gap-2">
-                    <input type="checkbox" className="w-4 h-4 rounded" />
-                    <span className="text-sm text-slate-700">{item}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {/* Submit Button */}
             <div className="flex gap-3 pt-4">
               <button
                 onClick={handleSubmitFeedback}
-                disabled={!selectedBooking || rating === 0}
+                disabled={
+                  !selectedBooking || rating === 0 || comment.trim().length < 3
+                }
                 className="flex-1 py-2 px-4 bg-primary text-white rounded-lg hover:bg-blue-600 transition font-medium disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 <Send size={18} />
@@ -246,8 +252,7 @@ export default function UserFeedbackPage() {
         </div>
       )}
 
-      {/* Feedback History Tab */}
-      {activeTab === "history" && (
+      {!isLoading && activeTab === "history" && (
         <div className="space-y-4">
           <h2 className="text-xl font-bold text-slate-900">
             Your Feedback History
@@ -260,23 +265,23 @@ export default function UserFeedbackPage() {
                 className="mx-auto text-slate-400 mb-4"
               />
               <p className="text-slate-600">
-                You haven't submitted any feedback yet
+                You have not submitted any feedback yet
               </p>
             </div>
           ) : (
             <div className="space-y-4">
               {feedbackList.map((feedback) => (
                 <div
-                  key={feedback.id}
+                  key={feedback._id}
                   className="bg-white rounded-lg shadow-sm border border-slate-200 p-6"
                 >
                   <div className="flex justify-between items-start mb-3">
                     <div>
                       <h3 className="font-bold text-slate-900">
-                        {feedback.roomName}
+                        {getRoomDisplay(feedback)}
                       </h3>
                       <p className="text-sm text-slate-600">
-                        {feedback.bookingDate}
+                        {new Date(feedback.createdAt).toLocaleDateString()}
                       </p>
                     </div>
 
@@ -299,11 +304,9 @@ export default function UserFeedbackPage() {
 
                   <div className="flex justify-between items-center pt-3 border-t border-slate-200">
                     <span className="text-xs text-slate-600">
-                      Submitted on {feedback.submittedAt}
+                      Submitted on{" "}
+                      {new Date(feedback.createdAt).toLocaleString()}
                     </span>
-                    <button className="p-2 hover:bg-slate-100 rounded-lg transition text-red-600">
-                      <Trash2 size={18} />
-                    </button>
                   </div>
                 </div>
               ))}

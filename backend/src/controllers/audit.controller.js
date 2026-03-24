@@ -1,4 +1,5 @@
 const AuditLog = require("../models/AuditLog");
+const User = require("../models/User");
 
 // @route   GET /api/audit-logs
 // @desc    Get all audit logs (Admin/Staff only)
@@ -12,7 +13,7 @@ exports.getAllAuditLogs = async (req, res) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit))
-      .populate("userId", "name email");
+      .populate({ path: "userId", select: "name email", model: User });
 
     const total = await AuditLog.countDocuments();
 
@@ -76,7 +77,7 @@ exports.searchAuditLogs = async (req, res) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit))
-      .populate("userId", "name email");
+      .populate({ path: "userId", select: "name email", model: User });
 
     const total = await AuditLog.countDocuments(query);
 
@@ -103,10 +104,11 @@ exports.searchAuditLogs = async (req, res) => {
 // @access  Private
 exports.getAuditLogById = async (req, res) => {
   try {
-    const log = await AuditLog.findById(req.params.id).populate(
-      "userId",
-      "name email",
-    );
+    const log = await AuditLog.findById(req.params.id).populate({
+      path: "userId",
+      select: "name email",
+      model: User,
+    });
 
     if (!log) {
       return res.status(404).json({

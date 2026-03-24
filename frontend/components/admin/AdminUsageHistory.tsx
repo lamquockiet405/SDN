@@ -1,93 +1,62 @@
 "use client";
 
-import { useState } from "react";
-import { BarChart3, Filter } from "lucide-react";
-
-interface UsageRecord {
-  id: string;
-  date: string;
-  room: string;
-  user: string;
-  checkIn: string;
-  checkOut: string;
-  duration: string;
-}
+import { useEffect, useMemo, useState } from "react";
+import { BarChart3 } from "lucide-react";
+import { roomService } from "@/services/roomService";
+import { Room, RoomUsageRecord } from "@/types/room";
 
 export default function AdminUsageHistory() {
-  const [records, setRecords] = useState<UsageRecord[]>([
-    {
-      id: "1",
-      date: "2025-03-15",
-      room: "Study Room A",
-      user: "John Doe",
-      checkIn: "10:00",
-      checkOut: "12:30",
-      duration: "2h 30m",
-    },
-    {
-      id: "2",
-      date: "2025-03-15",
-      room: "Lab Room B",
-      user: "Jane Smith",
-      checkIn: "14:00",
-      checkOut: "16:45",
-      duration: "2h 45m",
-    },
-    {
-      id: "3",
-      date: "2025-03-15",
-      room: "Meeting Room A",
-      user: "Mike Johnson",
-      checkIn: "09:00",
-      checkOut: "11:00",
-      duration: "2h",
-    },
-    {
-      id: "4",
-      date: "2025-03-14",
-      room: "Study Room B",
-      user: "Sarah Williams",
-      checkIn: "13:00",
-      checkOut: "15:30",
-      duration: "2h 30m",
-    },
-    {
-      id: "5",
-      date: "2025-03-14",
-      room: "Study Room A",
-      user: "Tom Brown",
-      checkIn: "10:00",
-      checkOut: "11:45",
-      duration: "1h 45m",
-    },
-  ]);
+  const [records, setRecords] = useState<RoomUsageRecord[]>([]);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const [filterRoom, setFilterRoom] = useState("all");
   const [filterDate, setFilterDate] = useState("");
 
-  const rooms = Array.from(new Set(records.map((r) => r.room)));
+  useEffect(() => {
+    fetchData();
+  }, []);
 
-  const filteredRecords = records.filter((r) => {
-    const roomMatch = filterRoom === "all" || r.room === filterRoom;
-    const dateMatch = !filterDate || r.date === filterDate;
-    return roomMatch && dateMatch;
-  });
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [roomData, usageData] = await Promise.all([
+        roomService.getRooms({ page: 1, limit: 100 }),
+        roomService.getUsageHistory({ page: 1, limit: 200 }),
+      ]);
+      setRooms(roomData.rooms);
+      setRecords(usageData.records);
+    } catch (error) {
+      console.error("Failed to load usage history", error);
+      setRecords([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const totalDuration =
-    filteredRecords.length > 0
-      ? filteredRecords.reduce((sum, r) => {
-          const [h, m] = r.duration
-            .replace("h ", "")
-            .replace("m", "")
-            .split(" ");
-          return sum + parseInt(h) * 60 + parseInt(m);
-        }, 0)
-      : 0;
+  const filteredRecords = useMemo(() => {
+    return records.filter((record) => {
+      const roomMatch = filterRoom === "all" || record.roomId === filterRoom;
+      const dateMatch =
+        !filterDate ||
+        new Date(record.checkInTime).toISOString().slice(0, 10) === filterDate;
+      return roomMatch && dateMatch;
+    });
+  }, [records, filterRoom, filterDate]);
 
+  const totalDuration = filteredRecords.reduce(
+    (sum, record) => sum + (record.durationMinutes || 0),
+    0,
+  );
   const avgDuration =
     filteredRecords.length > 0
       ? (totalDuration / filteredRecords.length).toFixed(1)
-      : 0;
+      : "0";
+
+  const roomMap = useMemo(
+    () => new Map(rooms.map((room) => [room.id, room.name])),
+    [rooms],
+  );
 
   return (
     <div className="space-y-6">
@@ -113,8 +82,8 @@ export default function AdminUsageHistory() {
           >
             <option value="all">All Rooms</option>
             {rooms.map((room) => (
-              <option key={room} value={room}>
-                {room}
+              <option key={room.id} value={room.id}>
+                {room.name}
               </option>
             ))}
           </select>
@@ -187,18 +156,27 @@ export default function AdminUsageHistory() {
             </thead>
             <tbody className="divide-y divide-slate-200">
               {filteredRecords.map((record) => (
-                <tr key={record.id} className="hover:bg-slate-50 transition">
+                <tr
+                  key={record._id || record.id}
+                  className="hover:bg-slate-50 transition"
+                >
                   <td className="px-6 py-4 font-medium text-slate-900">
-                    {record.date}
+                    {new Date(record.checkInTime).toLocaleDateString()}
                   </td>
-                  <td className="px-6 py-4 text-slate-700">{record.room}</td>
-                  <td className="px-6 py-4 text-slate-700">{record.user}</td>
-                  <td className="px-6 py-4 text-slate-700">{record.checkIn}</td>
                   <td className="px-6 py-4 text-slate-700">
-                    {record.checkOut}
+                    {roomMap.get(record.roomId) || record.roomId}
+                  </td>
+                  <td className="px-6 py-4 text-slate-700">{record.userId}</td>
+                  <td className="px-6 py-4 text-slate-700">
+                    {new Date(record.checkInTime).toLocaleTimeString()}
+                  </td>
+                  <td className="px-6 py-4 text-slate-700">
+                    {record.checkOutTime
+                      ? new Date(record.checkOutTime).toLocaleTimeString()
+                      : "-"}
                   </td>
                   <td className="px-6 py-4 text-slate-700 font-semibold">
-                    {record.duration}
+                    {record.durationMinutes}m
                   </td>
                 </tr>
               ))}
@@ -206,6 +184,12 @@ export default function AdminUsageHistory() {
           </table>
         </div>
       </div>
+
+      {loading && (
+        <div className="text-center py-10 text-slate-500">
+          Loading usage history...
+        </div>
+      )}
 
       {filteredRecords.length === 0 && (
         <div className="text-center py-12 bg-slate-50 rounded-lg">

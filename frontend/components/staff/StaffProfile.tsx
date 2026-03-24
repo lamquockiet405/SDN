@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Mail,
   Lock,
@@ -10,48 +10,147 @@ import {
   Shield,
   Save,
 } from "lucide-react";
+import { userService } from "@/services/userService";
+import { authService } from "@/services/authService";
+import { useAuth } from "@/context/AuthContext";
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error &&
+    typeof (error as { response?: unknown }).response === "object" &&
+    (error as { response?: { data?: { message?: string } } }).response?.data
+      ?.message
+  ) {
+    return (error as { response: { data: { message: string } } }).response.data
+      .message;
+  }
+
+  return fallback;
+};
+
+const formatRole = (role?: string) => {
+  if (!role) return "-";
+  return role.charAt(0).toUpperCase() + role.slice(1);
+};
 
 export default function StaffProfile() {
+  const { refreshUser } = useAuth();
   const [profileData, setProfileData] = useState({
-    name: "Admin Staff",
-    email: "admin@studyrooms.com",
-    phone: "+1 (555) 123-4567",
-    department: "Management",
-    joinDate: "2024-01-15",
-    role: "Admin",
-    status: "Active",
+    id: "",
+    name: "",
+    email: "",
+    phone: "",
+    department: "",
+    joinDate: "",
+    role: "",
+    status: "active",
+    lastLogin: "",
+    isTwoFactorEnabled: false,
+  });
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
     password: "",
     confirmPassword: "",
   });
 
+  const [isLoading, setIsLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        setIsLoading(true);
+        setErrorMessage("");
+        const profile = await userService.getMyProfile();
+
+        setProfileData({
+          id: profile.id,
+          name: profile.name || "",
+          email: profile.email || "",
+          phone: profile.phone || "",
+          department: profile.department || "",
+          joinDate: profile.createdAt || "",
+          role: profile.role || "",
+          status: profile.status || "active",
+          lastLogin: profile.lastLogin || "",
+          isTwoFactorEnabled: Boolean(profile.isTwoFactorEnabled),
+        });
+      } catch (error) {
+        setErrorMessage(getErrorMessage(error, "Failed to load profile"));
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchProfile();
+  }, []);
 
   const handleProfileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setProfileData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSaveProfile = () => {
-    setSuccessMessage("Profile updated successfully!");
-    setTimeout(() => setSuccessMessage(""), 3000);
-    setIsEditing(false);
+  const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setPasswordForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleChangePassword = () => {
-    if (profileData.password !== profileData.confirmPassword) {
+  const handleSaveProfile = async () => {
+    try {
+      setErrorMessage("");
+      await userService.updateMyProfile({
+        name: profileData.name,
+        phone: profileData.phone,
+        department: profileData.department,
+      });
+      await refreshUser();
+      setSuccessMessage("Profile updated successfully!");
+      setTimeout(() => setSuccessMessage(""), 3000);
+      setIsEditing(false);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error, "Failed to update profile"));
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!passwordForm.currentPassword) {
+      alert("Please enter your current password");
+      return;
+    }
+
+    if (passwordForm.password.length < 6) {
+      alert("New password must be at least 6 characters");
+      return;
+    }
+
+    if (passwordForm.password !== passwordForm.confirmPassword) {
       alert("Passwords do not match!");
       return;
     }
-    setSuccessMessage("Password changed successfully!");
-    setTimeout(() => setSuccessMessage(""), 3000);
-    setShowPasswordForm(false);
-    setProfileData((prev) => ({
-      ...prev,
-      password: "",
-      confirmPassword: "",
-    }));
+
+    try {
+      setErrorMessage("");
+      await authService.changePassword(
+        passwordForm.currentPassword,
+        passwordForm.password,
+        passwordForm.confirmPassword,
+      );
+      setSuccessMessage("Password changed successfully!");
+      setTimeout(() => setSuccessMessage(""), 3000);
+      setShowPasswordForm(false);
+      setPasswordForm({
+        currentPassword: "",
+        password: "",
+        confirmPassword: "",
+      });
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error, "Failed to change password"));
+    }
   };
 
   return (
@@ -71,6 +170,12 @@ export default function StaffProfile() {
         </div>
       )}
 
+      {errorMessage && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-sm text-red-800 font-medium">{errorMessage}</p>
+        </div>
+      )}
+
       {/* Profile Card */}
       <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
         <div className="h-32 bg-gradient-to-r from-slate-900 to-slate-700"></div>
@@ -83,9 +188,9 @@ export default function StaffProfile() {
               </div>
               <div>
                 <h2 className="text-2xl font-bold text-slate-900">
-                  {profileData.name}
+                  {profileData.name || "-"}
                 </h2>
-                <p className="text-slate-600">{profileData.role}</p>
+                <p className="text-slate-600">{formatRole(profileData.role)}</p>
               </div>
             </div>
             {!isEditing && (
@@ -99,14 +204,16 @@ export default function StaffProfile() {
           </div>
 
           {/* Profile Information */}
-          {!isEditing ? (
+          {isLoading ? (
+            <div className="py-6 text-slate-500">Loading profile...</div>
+          ) : !isEditing ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-4">
                 <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
                   <Mail size={20} className="text-blue-600" />
                   <div>
                     <p className="text-xs text-slate-600 font-medium">Email</p>
-                    <p className="text-slate-900">{profileData.email}</p>
+                    <p className="text-slate-900">{profileData.email || "-"}</p>
                   </div>
                 </div>
 
@@ -114,7 +221,7 @@ export default function StaffProfile() {
                   <Phone size={20} className="text-blue-600" />
                   <div>
                     <p className="text-xs text-slate-600 font-medium">Phone</p>
-                    <p className="text-slate-900">{profileData.phone}</p>
+                    <p className="text-slate-900">{profileData.phone || "-"}</p>
                   </div>
                 </div>
 
@@ -136,7 +243,11 @@ export default function StaffProfile() {
                     <p className="text-xs text-slate-600 font-medium">
                       Join Date
                     </p>
-                    <p className="text-slate-900">{profileData.joinDate}</p>
+                    <p className="text-slate-900">
+                      {profileData.joinDate
+                        ? new Date(profileData.joinDate).toLocaleDateString()
+                        : "-"}
+                    </p>
                   </div>
                 </div>
 
@@ -144,15 +255,27 @@ export default function StaffProfile() {
                   <Shield size={20} className="text-blue-600" />
                   <div>
                     <p className="text-xs text-slate-600 font-medium">Role</p>
-                    <p className="text-slate-900">{profileData.role}</p>
+                    <p className="text-slate-900">
+                      {formatRole(profileData.role)}
+                    </p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
-                  <div className="w-5 h-5 rounded-full bg-green-500"></div>
+                  <div
+                    className={`w-5 h-5 rounded-full ${
+                      profileData.status === "active"
+                        ? "bg-green-500"
+                        : profileData.status === "inactive"
+                          ? "bg-yellow-500"
+                          : "bg-red-500"
+                    }`}
+                  ></div>
                   <div>
                     <p className="text-xs text-slate-600 font-medium">Status</p>
-                    <p className="text-slate-900">{profileData.status}</p>
+                    <p className="text-slate-900">
+                      {formatRole(profileData.status)}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -183,6 +306,7 @@ export default function StaffProfile() {
                     name="email"
                     value={profileData.email}
                     onChange={handleProfileChange}
+                    disabled
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 bg-white hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
                   />
                 </div>
@@ -259,13 +383,27 @@ export default function StaffProfile() {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">
+                Current Password
+              </label>
+              <input
+                type="password"
+                name="currentPassword"
+                value={passwordForm.currentPassword}
+                onChange={handlePasswordChange}
+                placeholder="Enter current password"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 bg-white hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500 transition"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
                 New Password
               </label>
               <input
                 type="password"
                 name="password"
-                value={profileData.password}
-                onChange={handleProfileChange}
+                value={passwordForm.password}
+                onChange={handlePasswordChange}
                 placeholder="Enter new password"
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 bg-white hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500 transition"
               />
@@ -278,8 +416,8 @@ export default function StaffProfile() {
               <input
                 type="password"
                 name="confirmPassword"
-                value={profileData.confirmPassword}
-                onChange={handleProfileChange}
+                value={passwordForm.confirmPassword}
+                onChange={handlePasswordChange}
                 placeholder="Confirm password"
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 bg-white hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500 transition"
               />
@@ -295,11 +433,11 @@ export default function StaffProfile() {
               <button
                 onClick={() => {
                   setShowPasswordForm(false);
-                  setProfileData((prev) => ({
-                    ...prev,
+                  setPasswordForm({
+                    currentPassword: "",
                     password: "",
                     confirmPassword: "",
-                  }));
+                  });
                 }}
                 className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition font-medium"
               >
@@ -319,23 +457,43 @@ export default function StaffProfile() {
           <div className="flex justify-between p-3 bg-slate-50 rounded-lg">
             <span className="text-slate-600 font-medium">Account Type</span>
             <span className="text-slate-900 font-semibold">
-              Staff/Administrator
+              {formatRole(profileData.role)}
             </span>
           </div>
           <div className="flex justify-between p-3 bg-slate-50 rounded-lg">
             <span className="text-slate-600 font-medium">Account Status</span>
             <span className="text-slate-900 font-semibold">
-              <span className="inline-block w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-              Active
+              <span
+                className={`inline-block w-2 h-2 rounded-full mr-2 ${
+                  profileData.status === "active"
+                    ? "bg-green-500"
+                    : profileData.status === "inactive"
+                      ? "bg-yellow-500"
+                      : "bg-red-500"
+                }`}
+              ></span>
+              {formatRole(profileData.status)}
             </span>
           </div>
           <div className="flex justify-between p-3 bg-slate-50 rounded-lg">
             <span className="text-slate-600 font-medium">Last Activity</span>
-            <span className="text-slate-900 font-semibold">Today, 2:30 PM</span>
+            <span className="text-slate-900 font-semibold">
+              {profileData.lastLogin
+                ? new Date(profileData.lastLogin).toLocaleString()
+                : "-"}
+            </span>
           </div>
           <div className="flex justify-between p-3 bg-slate-50 rounded-lg">
             <span className="text-slate-600 font-medium">Two-Factor Auth</span>
-            <span className="text-yellow-600 font-semibold">Not Enabled</span>
+            <span
+              className={`font-semibold ${
+                profileData.isTwoFactorEnabled
+                  ? "text-green-600"
+                  : "text-yellow-600"
+              }`}
+            >
+              {profileData.isTwoFactorEnabled ? "Enabled" : "Not Enabled"}
+            </span>
           </div>
         </div>
       </div>

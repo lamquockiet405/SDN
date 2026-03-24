@@ -2,13 +2,18 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
-const connectDB = require("./config/db");
+const { connectDB } = require("./config/db");
+const swaggerUi = require("swagger-ui-express");
+const { swaggerSpec } = require("./config/swagger");
 
 // Import routes
 const authRoutes = require("./routes/auth.routes");
 const auditRoutes = require("./routes/audit.routes");
 const roomRoutes = require("./routes/room.routes");
 const bookingRoutes = require("./routes/booking.routes");
+const userRoutes = require("./routes/user.routes");
+const reviewRoutes = require("./routes/review.routes");
+const paymentRoutes = require("./routes/payment.routes");
 
 const app = express();
 
@@ -45,11 +50,23 @@ app.get("/health", (req, res) => {
   });
 });
 
+// API documentation
+if (process.env.SWAGGER_ENABLED !== "false") {
+  app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+  app.get("/api-docs.json", (req, res) => {
+    res.setHeader("Content-Type", "application/json");
+    res.send(swaggerSpec);
+  });
+}
+
 // API Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/audit-logs", auditRoutes);
 app.use("/api/rooms", roomRoutes);
 app.use("/api/bookings", bookingRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/reviews", reviewRoutes);
+app.use("/api/payments", paymentRoutes);
 
 // 404 handler
 app.use("*", (req, res) => {

@@ -1,184 +1,286 @@
 "use client";
 
-import { useState } from "react";
-import { Image, CheckCircle, XCircle, Eye } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
+import { Image as ImageIcon, CheckCircle, XCircle, Eye } from "lucide-react";
+import { bookingService } from "@/services/bookingService";
+import { Booking, BookingEvidence } from "@/types/booking";
 
-interface Evidence {
-  id: string;
-  bookingId: string;
-  user: string;
-  room: string;
-  image: string;
-  uploadTime: string;
-  status: "pending" | "approved" | "rejected";
-}
+type EvidenceWithDetails = BookingEvidence & {
+  booking?: Booking;
+  uploadedByUser?: {
+    _id: string;
+    name?: string;
+    email?: string;
+  };
+};
+
+const getRoomDisplay = (evidence: EvidenceWithDetails) => {
+  if (typeof evidence.booking?.roomId === "object") {
+    return (
+      evidence.booking.roomId.name ||
+      evidence.booking.roomId.location ||
+      evidence.booking.roomId._id
+    );
+  }
+
+  return evidence.booking?.roomId || "-";
+};
+
+const getUserDisplay = (evidence: EvidenceWithDetails) =>
+  evidence.uploadedByUser?.name ||
+  evidence.uploadedByUser?.email ||
+  evidence.uploadedBy ||
+  "-";
+
+const getBookingDisplay = (evidence: EvidenceWithDetails) => {
+  if (typeof evidence.bookingId === "string") {
+    return evidence.bookingId;
+  }
+
+  return evidence.booking?._id || evidence.booking?.id || "-";
+};
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error &&
+    typeof (error as { response?: unknown }).response === "object" &&
+    (error as { response?: { data?: { message?: string } } }).response?.data
+      ?.message
+  ) {
+    return (error as { response: { data: { message: string } } }).response.data
+      .message;
+  }
+
+  return fallback;
+};
+
+const statusColor = (status: "pending" | "approved" | "rejected") => {
+  if (status === "approved") {
+    return "bg-green-100 text-green-700";
+  }
+
+  if (status === "rejected") {
+    return "bg-red-100 text-red-700";
+  }
+
+  return "bg-yellow-100 text-yellow-700";
+};
 
 export default function AdminEvidenceReview() {
-  const [evidenceList, setEvidenceList] = useState<Evidence[]>([
-    {
-      id: "e1",
-      bookingId: "b1",
-      user: "John Doe",
-      room: "Study Room A",
-      image:
-        "https://images.unsplash.com/photo-1497366216548-37526070297c?w=400&h=300&fit=crop",
-      uploadTime: "2025-03-15 16:30",
-      status: "pending",
-    },
-    {
-      id: "e2",
-      bookingId: "b2",
-      user: "Jane Smith",
-      room: "Lab Room B",
-      image:
-        "https://images.unsplash.com/photo-1552664730-d307ca884978?w=400&h=300&fit=crop",
-      uploadTime: "2025-03-15 12:15",
-      status: "approved",
-    },
-    {
-      id: "e3",
-      bookingId: "b3",
-      user: "Mike Johnson",
-      room: "Meeting Room C",
-      image:
-        "https://images.unsplash.com/photo-1552664730-d307ca884978?w=400&h=300&fit=crop",
-      uploadTime: "2025-03-14 18:45",
-      status: "pending",
-    },
-  ]);
+  const [evidenceList, setEvidenceList] = useState<EvidenceWithDetails[]>([]);
+  const [reviewedList, setReviewedList] = useState<EvidenceWithDetails[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [actionLoadingId, setActionLoadingId] = useState("");
 
-  const [selectedEvidence, setSelectedEvidence] = useState<Evidence | null>(
-    null,
-  );
+  const [selectedEvidence, setSelectedEvidence] =
+    useState<EvidenceWithDetails | null>(null);
   const [showModal, setShowModal] = useState(false);
 
-  const handleApprove = (id: string) => {
-    setEvidenceList(
-      evidenceList.map((e) => (e.id === id ? { ...e, status: "approved" } : e)),
-    );
+  const loadEvidence = async () => {
+    try {
+      setIsLoading(true);
+      const response = await bookingService.getPendingEvidence({
+        page: 1,
+        limit: 100,
+        status: "all",
+      });
+
+      setEvidenceList((response.data || []) as EvidenceWithDetails[]);
+    } catch (error) {
+      console.error("Failed to load evidence", error);
+      setEvidenceList([]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleReject = (id: string) => {
-    setEvidenceList(
-      evidenceList.map((e) => (e.id === id ? { ...e, status: "rejected" } : e)),
-    );
+  useEffect(() => {
+    loadEvidence();
+  }, []);
+
+  const handleReview = async (
+    evidence: EvidenceWithDetails,
+    status: "approved" | "rejected",
+  ) => {
+    try {
+      setActionLoadingId(evidence._id);
+      const note =
+        status === "rejected" ? "Rejected by admin reviewer" : "Approved";
+
+      const updatedEvidence = await bookingService.reviewEvidence(
+        evidence._id,
+        {
+          status,
+          note,
+        },
+      );
+
+      setEvidenceList((prev) =>
+        prev.filter((item) => item._id !== evidence._id),
+      );
+
+      setReviewedList((prev) => [
+        {
+          ...(evidence as EvidenceWithDetails),
+          ...(updatedEvidence as EvidenceWithDetails),
+          status,
+        },
+        ...prev,
+      ]);
+
+      if (selectedEvidence?._id === evidence._id) {
+        setShowModal(false);
+      }
+    } catch (error) {
+      alert(getErrorMessage(error, "Failed to review evidence"));
+    } finally {
+      setActionLoadingId("");
+    }
   };
 
-  const pendingEvidence = evidenceList.filter((e) => e.status === "pending");
+  const displayList = useMemo(
+    () => [...evidenceList, ...reviewedList],
+    [evidenceList, reviewedList],
+  );
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-2">
-          <Image size={32} className="text-cyan-600" />
+          <ImageIcon size={32} className="text-cyan-600" />
           Evidence Review
         </h1>
         <p className="text-slate-600 mt-1">Review and approve usage evidence</p>
       </div>
 
       {/* Pending Alert */}
-      {pendingEvidence.length > 0 && (
+      {evidenceList.length > 0 && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <p className="text-sm text-yellow-800">
-            <strong>{pendingEvidence.length}</strong> evidence file(s) awaiting
+            <strong>{evidenceList.length}</strong> evidence file(s) awaiting
             review
           </p>
         </div>
       )}
 
+      {isLoading && (
+        <div className="text-center py-12 bg-slate-50 rounded-lg text-slate-600">
+          Loading evidence...
+        </div>
+      )}
+
       {/* Evidence Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {evidenceList.map((evidence) => (
-          <div
-            key={evidence.id}
-            className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition"
-          >
-            {/* Image */}
-            <div className="h-40 bg-slate-200 overflow-hidden relative">
-              <img
-                src={evidence.image}
-                alt="Evidence"
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute top-2 right-2">
-                <span
-                  className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                    evidence.status === "pending"
-                      ? "bg-yellow-100 text-yellow-700"
-                      : evidence.status === "approved"
-                        ? "bg-green-100 text-green-700"
-                        : "bg-red-100 text-red-700"
-                  }`}
-                >
-                  {evidence.status.charAt(0).toUpperCase() +
-                    evidence.status.slice(1)}
-                </span>
-              </div>
-            </div>
-
-            {/* Content */}
-            <div className="p-4 space-y-3">
-              <div>
-                <p className="text-xs text-slate-600 mb-1">Booking ID</p>
-                <p className="font-semibold text-slate-900">
-                  {evidence.bookingId}
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div>
-                  <p className="text-xs text-slate-600">User</p>
-                  <p className="font-medium text-slate-900">{evidence.user}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-600">Room</p>
-                  <p className="font-medium text-slate-900">{evidence.room}</p>
-                </div>
-              </div>
-
-              <div>
-                <p className="text-xs text-slate-600 mb-1">Upload Time</p>
-                <p className="text-sm text-slate-700">{evidence.uploadTime}</p>
-              </div>
-
-              {/* Actions */}
-              <div className="flex gap-2 pt-3 border-t border-slate-200">
-                <button
-                  onClick={() => {
-                    setSelectedEvidence(evidence);
-                    setShowModal(true);
-                  }}
-                  className="flex-1 flex items-center justify-center gap-1 px-2 py-2 text-sm border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 transition font-medium"
-                >
-                  <Eye size={16} />
-                  View
-                </button>
-                {evidence.status === "pending" && (
-                  <>
-                    <button
-                      onClick={() => handleApprove(evidence.id)}
-                      className="flex-1 flex items-center justify-center gap-1 px-2 py-2 text-sm bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition font-medium"
-                    >
-                      <CheckCircle size={16} />
-                    </button>
-                    <button
-                      onClick={() => handleReject(evidence.id)}
-                      className="flex-1 flex items-center justify-center gap-1 px-2 py-2 text-sm bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition font-medium"
-                    >
-                      <XCircle size={16} />
-                    </button>
-                  </>
+      {!isLoading && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {displayList.map((evidence) => (
+            <div
+              key={evidence._id}
+              className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition"
+            >
+              {/* Image */}
+              <div className="h-40 bg-slate-200 overflow-hidden relative">
+                {evidence.type === "image" ? (
+                  <Image
+                    src={evidence.url}
+                    alt="Evidence preview"
+                    fill
+                    unoptimized
+                    className="object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-slate-600 text-sm px-4 text-center">
+                    {evidence.type === "video"
+                      ? "Video evidence"
+                      : "Document evidence"}
+                  </div>
                 )}
+                <div className="absolute top-2 right-2">
+                  <span
+                    className={`px-3 py-1 rounded-full text-xs font-semibold ${statusColor(
+                      evidence.status,
+                    )}`}
+                  >
+                    {evidence.status.charAt(0).toUpperCase() +
+                      evidence.status.slice(1)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="p-4 space-y-3">
+                <div>
+                  <p className="text-xs text-slate-600 mb-1">Booking ID</p>
+                  <p className="font-semibold text-slate-900">
+                    {getBookingDisplay(evidence)}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <p className="text-xs text-slate-600">User</p>
+                    <p className="font-medium text-slate-900">
+                      {getUserDisplay(evidence)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-600">Room</p>
+                    <p className="font-medium text-slate-900">
+                      {getRoomDisplay(evidence)}
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs text-slate-600 mb-1">Upload Time</p>
+                  <p className="text-sm text-slate-700">
+                    {new Date(evidence.createdAt || "").toLocaleString()}
+                  </p>
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-2 pt-3 border-t border-slate-200">
+                  <button
+                    onClick={() => {
+                      setSelectedEvidence(evidence);
+                      setShowModal(true);
+                    }}
+                    className="flex-1 flex items-center justify-center gap-1 px-2 py-2 text-sm border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 transition font-medium"
+                  >
+                    <Eye size={16} />
+                    View
+                  </button>
+                  {evidence.status === "pending" && (
+                    <>
+                      <button
+                        onClick={() => handleReview(evidence, "approved")}
+                        disabled={actionLoadingId === evidence._id}
+                        className="flex-1 flex items-center justify-center gap-1 px-2 py-2 text-sm bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition font-medium disabled:opacity-50"
+                      >
+                        <CheckCircle size={16} />
+                      </button>
+                      <button
+                        onClick={() => handleReview(evidence, "rejected")}
+                        disabled={actionLoadingId === evidence._id}
+                        className="flex-1 flex items-center justify-center gap-1 px-2 py-2 text-sm bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition font-medium disabled:opacity-50"
+                      >
+                        <XCircle size={16} />
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
-      {evidenceList.length === 0 && (
+      {!isLoading && displayList.length === 0 && (
         <div className="text-center py-12 bg-slate-50 rounded-lg">
-          <Image size={48} className="mx-auto text-slate-400 mb-4" />
+          <ImageIcon size={48} className="mx-auto text-slate-400 mb-4" />
           <p className="text-slate-600">No evidence to review</p>
         </div>
       )}
@@ -202,11 +304,34 @@ export default function AdminEvidenceReview() {
             <div className="p-6 space-y-4">
               {/* Full Image */}
               <div className="w-full h-96 bg-slate-200 rounded-lg overflow-hidden">
-                <img
-                  src={selectedEvidence.image}
-                  alt="Evidence"
-                  className="w-full h-full object-cover"
-                />
+                {selectedEvidence.type === "image" ? (
+                  <div className="relative w-full h-full">
+                    <Image
+                      src={selectedEvidence.url}
+                      alt="Evidence detail"
+                      fill
+                      unoptimized
+                      className="object-contain bg-slate-100"
+                    />
+                  </div>
+                ) : selectedEvidence.type === "video" ? (
+                  <video
+                    src={selectedEvidence.url}
+                    controls
+                    className="w-full h-full object-contain bg-black"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <a
+                      href={selectedEvidence.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-primary underline"
+                    >
+                      Open document evidence
+                    </a>
+                  </div>
+                )}
               </div>
 
               {/* Details */}
@@ -214,25 +339,27 @@ export default function AdminEvidenceReview() {
                 <div className="bg-slate-50 rounded-lg p-4">
                   <p className="text-sm text-slate-600 mb-1">Booking ID</p>
                   <p className="font-semibold text-slate-900">
-                    {selectedEvidence.bookingId}
+                    {getBookingDisplay(selectedEvidence)}
                   </p>
                 </div>
                 <div className="bg-slate-50 rounded-lg p-4">
                   <p className="text-sm text-slate-600 mb-1">User</p>
                   <p className="font-semibold text-slate-900">
-                    {selectedEvidence.user}
+                    {getUserDisplay(selectedEvidence)}
                   </p>
                 </div>
                 <div className="bg-slate-50 rounded-lg p-4">
                   <p className="text-sm text-slate-600 mb-1">Room</p>
                   <p className="font-semibold text-slate-900">
-                    {selectedEvidence.room}
+                    {getRoomDisplay(selectedEvidence)}
                   </p>
                 </div>
                 <div className="bg-slate-50 rounded-lg p-4">
                   <p className="text-sm text-slate-600 mb-1">Upload Time</p>
                   <p className="font-semibold text-slate-900">
-                    {selectedEvidence.uploadTime}
+                    {new Date(
+                      selectedEvidence.createdAt || "",
+                    ).toLocaleString()}
                   </p>
                 </div>
               </div>
@@ -249,9 +376,9 @@ export default function AdminEvidenceReview() {
                 <>
                   <button
                     onClick={() => {
-                      handleApprove(selectedEvidence.id);
-                      setShowModal(false);
+                      handleReview(selectedEvidence, "approved");
                     }}
+                    disabled={actionLoadingId === selectedEvidence._id}
                     className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium flex items-center justify-center gap-2"
                   >
                     <CheckCircle size={18} />
@@ -259,9 +386,9 @@ export default function AdminEvidenceReview() {
                   </button>
                   <button
                     onClick={() => {
-                      handleReject(selectedEvidence.id);
-                      setShowModal(false);
+                      handleReview(selectedEvidence, "rejected");
                     }}
+                    disabled={actionLoadingId === selectedEvidence._id}
                     className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium flex items-center justify-center gap-2"
                   >
                     <XCircle size={18} />

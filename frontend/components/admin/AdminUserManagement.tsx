@@ -1,341 +1,231 @@
 "use client";
 
-import { useState } from "react";
-import { Users, Plus, Edit2, Trash2, Lock, Unlock, Eye } from "lucide-react";
-
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: "user" | "staff" | "admin";
-  status: "active" | "suspended" | "banned";
-  createdDate: string;
-}
+import { useEffect, useState } from "react";
+import { Users, Eye } from "lucide-react";
+import { User } from "@/types/user";
+import { userService } from "@/services/userService";
 
 export default function AdminUserManagement() {
-  const [users, setUsers] = useState<User[]>([
-    {
-      id: "1",
-      name: "John Doe",
-      email: "john@student.com",
-      role: "user",
-      status: "active",
-      createdDate: "2024-01-15",
-    },
-    {
-      id: "2",
-      name: "Jane Smith",
-      email: "jane@student.com",
-      role: "user",
-      status: "active",
-      createdDate: "2024-02-20",
-    },
-    {
-      id: "3",
-      name: "Mike Johnson",
-      email: "mike@student.com",
-      role: "user",
-      status: "suspended",
-      createdDate: "2024-03-10",
-    },
-    {
-      id: "4",
-      name: "Sarah Williams",
-      email: "sarah@student.com",
-      role: "user",
-      status: "banned",
-      createdDate: "2023-12-05",
-    },
-    {
-      id: "5",
-      name: "Tom Brown",
-      email: "tom@student.com",
-      role: "user",
-      status: "active",
-      createdDate: "2024-01-25",
-    },
-  ]);
-
-  const [filterStatus, setFilterStatus] = useState("all");
-  const [filterRole, setFilterRole] = useState("all");
-  const [searchTerm, setSearchTerm] = useState("");
+  const [users, setUsers] = useState<User[]>([]);
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("all");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [showModal, setShowModal] = useState(false);
-  const [newStatus, setNewStatus] = useState<User["status"]>("active");
-  const [newRole, setNewRole] = useState<User["role"]>("user");
+  const [editName, setEditName] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editDepartment, setEditDepartment] = useState("");
 
-  const filteredUsers = users.filter((u) => {
-    const statusMatch = filterStatus === "all" || u.status === filterStatus;
-    const roleMatch = filterRole === "all" || u.role === filterRole;
-    const searchMatch =
-      u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      u.email.toLowerCase().includes(searchTerm.toLowerCase());
-    return statusMatch && roleMatch && searchMatch;
-  });
-
-  const handleChangeStatus = (userId: string, status: User["status"]) => {
-    setUsers(users.map((u) => (u.id === userId ? { ...u, status } : u)));
+  const loadUsers = async () => {
+    try {
+      setLoading(true);
+      setError("");
+      const result = await userService.getUsers({
+        search,
+        status:
+          status === "all"
+            ? undefined
+            : (status as "active" | "inactive" | "locked"),
+        page: 1,
+        limit: 100,
+      });
+      setUsers(result.data.filter((item) => item.role !== "admin"));
+    } catch (err: any) {
+      setError(err?.response?.data?.message || "Failed to load users");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleChangeRole = (userId: string, role: User["role"]) => {
-    setUsers(users.map((u) => (u.id === userId ? { ...u, role } : u)));
+  useEffect(() => {
+    loadUsers();
+  }, [status]);
+
+  const handleSearch = async (event: React.FormEvent) => {
+    event.preventDefault();
+    await loadUsers();
   };
 
-  const handleDeleteUser = (userId: string) => {
-    setUsers(users.filter((u) => u.id !== userId));
+  const handleStatusChange = async (
+    userId: string,
+    nextStatus: "active" | "inactive" | "locked",
+  ) => {
+    try {
+      await userService.updateUserStatus(userId, nextStatus);
+      await loadUsers();
+    } catch (err: any) {
+      alert(err?.response?.data?.message || "Failed to update status");
+    }
   };
 
-  const statusColors = {
-    active: "bg-green-100 text-green-700",
-    suspended: "bg-yellow-100 text-yellow-700",
-    banned: "bg-red-100 text-red-700",
+  const openProfile = async (userId: string) => {
+    try {
+      const profile = await userService.getUserProfile(userId);
+      setSelectedUser(profile);
+      setEditName(profile.name || "");
+      setEditPhone(profile.phone || "");
+      setEditDepartment(profile.department || "");
+    } catch (err: any) {
+      alert(err?.response?.data?.message || "Failed to load profile");
+    }
   };
 
-  const roleColors = {
-    user: "bg-blue-100 text-blue-700",
-    staff: "bg-purple-100 text-purple-700",
-    admin: "bg-red-100 text-red-700",
+  const saveProfile = async () => {
+    if (!selectedUser) return;
+
+    try {
+      await userService.updateUserProfile(selectedUser.id, {
+        name: editName,
+        phone: editPhone,
+        department: editDepartment,
+      });
+      await loadUsers();
+      setSelectedUser(null);
+    } catch (err: any) {
+      alert(err?.response?.data?.message || "Failed to update profile");
+    }
   };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-2">
-            <Users size={32} className="text-blue-600" />
-            User Management
-          </h1>
-          <p className="text-slate-600 mt-1">Total users: {users.length}</p>
-        </div>
+      <div>
+        <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-2">
+          <Users size={30} className="text-blue-600" />
+          User Management
+        </h1>
+        <p className="text-slate-600 mt-1">Manage users and status</p>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4 flex flex-wrap gap-4">
-        <div className="flex-1 min-w-64">
-          <label className="block text-sm font-semibold text-slate-700 mb-2">
-            Search
-          </label>
-          <input
-            type="text"
-            placeholder="Search by name or email..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 bg-white hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-          />
-        </div>
+      <form
+        onSubmit={handleSearch}
+        className="bg-white rounded-lg border border-slate-200 p-4 grid grid-cols-1 md:grid-cols-4 gap-4"
+      >
+        <input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search by name or email"
+          className="px-3 py-2 border border-slate-300 rounded-lg"
+        />
+        <select
+          value={status}
+          onChange={(event) => setStatus(event.target.value)}
+          className="px-3 py-2 border border-slate-300 rounded-lg"
+        >
+          <option value="all">All Status</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+          <option value="locked">Locked</option>
+        </select>
+        <button
+          type="submit"
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        >
+          Search
+        </button>
+      </form>
 
-        <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-2">
-            Status
-          </label>
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-3 py-2 border border-slate-300 rounded-lg text-slate-700 bg-white hover:border-slate-400 transition"
-          >
-            <option value="all">All Status</option>
-            <option value="active">Active</option>
-            <option value="suspended">Suspended</option>
-            <option value="banned">Banned</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-2">
-            Role
-          </label>
-          <select
-            value={filterRole}
-            onChange={(e) => setFilterRole(e.target.value)}
-            className="px-3 py-2 border border-slate-300 rounded-lg text-slate-700 bg-white hover:border-slate-400 transition"
-          >
-            <option value="all">All Roles</option>
-            <option value="user">User</option>
-            <option value="staff">Staff</option>
-            <option value="admin">Admin</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Users Table */}
-      <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-700">
-                  Name
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-700">
-                  Email
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-700">
-                  Role
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-700">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-700">
-                  Created Date
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-700">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {filteredUsers.map((user) => (
-                <tr key={user.id} className="hover:bg-slate-50 transition">
-                  <td className="px-6 py-4 font-medium text-slate-900">
-                    {user.name}
-                  </td>
-                  <td className="px-6 py-4 text-slate-700">{user.email}</td>
-                  <td className="px-6 py-4">
-                    <select
-                      value={user.role}
-                      onChange={(e) =>
-                        handleChangeRole(
-                          user.id,
-                          e.target.value as User["role"],
-                        )
-                      }
-                      className={`px-3 py-1 rounded-full text-xs font-medium border-0 ${
-                        roleColors[user.role]
-                      } cursor-pointer`}
-                    >
-                      <option value="user">User</option>
-                      <option value="staff">Staff</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                  </td>
-                  <td className="px-6 py-4">
-                    <select
-                      value={user.status}
-                      onChange={(e) =>
-                        handleChangeStatus(
-                          user.id,
-                          e.target.value as User["status"],
-                        )
-                      }
-                      className={`px-3 py-1 rounded-full text-xs font-medium border-0 ${
-                        statusColors[user.status]
-                      } cursor-pointer`}
-                    >
-                      <option value="active">Active</option>
-                      <option value="suspended">Suspended</option>
-                      <option value="banned">Banned</option>
-                    </select>
-                  </td>
-                  <td className="px-6 py-4 text-slate-700">
-                    {user.createdDate}
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => {
-                          setSelectedUser(user);
-                          setShowModal(true);
-                        }}
-                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
-                      >
-                        <Eye size={18} />
-                      </button>
-                      <button className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition">
-                        <Edit2 size={18} />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteUser(user.id)}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {filteredUsers.length === 0 && (
-        <div className="text-center py-12 bg-slate-50 rounded-lg">
-          <Users size={48} className="mx-auto text-slate-400 mb-4" />
-          <p className="text-slate-600">No users found</p>
+      {error && (
+        <div className="bg-red-50 text-red-700 border border-red-200 rounded-lg p-4">
+          {error}
         </div>
       )}
 
-      {/* User Details Modal */}
-      {showModal && selectedUser && (
+      <div className="bg-white rounded-lg border border-slate-200 overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-slate-50 border-b border-slate-200">
+            <tr>
+              <th className="text-left px-4 py-3">Name</th>
+              <th className="text-left px-4 py-3">Email</th>
+              <th className="text-left px-4 py-3">Status</th>
+              <th className="text-left px-4 py-3">Violations</th>
+              <th className="text-left px-4 py-3">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-200">
+            {loading ? (
+              <tr>
+                <td className="px-4 py-4 text-slate-600" colSpan={5}>
+                  Loading users...
+                </td>
+              </tr>
+            ) : (
+              users.map((item) => (
+                <tr key={item.id}>
+                  <td className="px-4 py-3 font-medium text-slate-900">
+                    {item.name}
+                  </td>
+                  <td className="px-4 py-3 text-slate-700">{item.email}</td>
+                  <td className="px-4 py-3">
+                    <select
+                      value={item.status || "active"}
+                      onChange={(event) =>
+                        handleStatusChange(
+                          item.id,
+                          event.target.value as
+                            | "active"
+                            | "inactive"
+                            | "locked",
+                        )
+                      }
+                      className="px-2 py-1 border border-slate-300 rounded"
+                    >
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                      <option value="locked">Locked</option>
+                    </select>
+                  </td>
+                  <td className="px-4 py-3 text-slate-700">
+                    {item.violationCount || 0}
+                  </td>
+                  <td className="px-4 py-3">
+                    <button
+                      onClick={() => openProfile(item.id)}
+                      className="p-2 text-blue-600 hover:bg-blue-50 rounded"
+                    >
+                      <Eye size={18} />
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {selectedUser && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-lg max-w-md w-full">
-            <div className="p-6 border-b border-slate-200 flex justify-between items-center">
-              <h2 className="text-xl font-bold text-slate-900">User Profile</h2>
+          <div className="bg-white rounded-lg w-full max-w-lg p-6 space-y-4">
+            <h2 className="text-xl font-bold text-slate-900">Edit Profile</h2>
+            <input
+              value={editName}
+              onChange={(event) => setEditName(event.target.value)}
+              placeholder="Full name"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+            />
+            <input
+              value={editPhone}
+              onChange={(event) => setEditPhone(event.target.value)}
+              placeholder="Phone"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+            />
+            <input
+              value={editDepartment}
+              onChange={(event) => setEditDepartment(event.target.value)}
+              placeholder="Department"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+            />
+            <div className="flex gap-3">
               <button
-                onClick={() => setShowModal(false)}
-                className="text-slate-400 hover:text-slate-600"
+                onClick={() => setSelectedUser(null)}
+                className="flex-1 px-4 py-2 border border-slate-300 rounded-lg"
               >
-                ✕
+                Cancel
               </button>
-            </div>
-
-            <div className="p-6 space-y-4">
-              <div className="bg-slate-50 rounded-lg p-4">
-                <p className="text-sm text-slate-600 mb-1">Name</p>
-                <p className="font-semibold text-slate-900">
-                  {selectedUser.name}
-                </p>
-              </div>
-
-              <div className="bg-slate-50 rounded-lg p-4">
-                <p className="text-sm text-slate-600 mb-1">Email</p>
-                <p className="font-semibold text-slate-900">
-                  {selectedUser.email}
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-slate-50 rounded-lg p-4">
-                  <p className="text-sm text-slate-600 mb-1">Role</p>
-                  <p
-                    className={`font-semibold px-2 py-1 rounded inline-block text-xs ${
-                      roleColors[selectedUser.role]
-                    }`}
-                  >
-                    {selectedUser.role}
-                  </p>
-                </div>
-
-                <div className="bg-slate-50 rounded-lg p-4">
-                  <p className="text-sm text-slate-600 mb-1">Status</p>
-                  <p
-                    className={`font-semibold px-2 py-1 rounded inline-block text-xs ${
-                      statusColors[selectedUser.status]
-                    }`}
-                  >
-                    {selectedUser.status}
-                  </p>
-                </div>
-              </div>
-
-              <div className="bg-slate-50 rounded-lg p-4">
-                <p className="text-sm text-slate-600 mb-1">Created Date</p>
-                <p className="font-semibold text-slate-900">
-                  {selectedUser.createdDate}
-                </p>
-              </div>
-            </div>
-
-            <div className="p-6 border-t border-slate-200 flex gap-3">
               <button
-                onClick={() => setShowModal(false)}
-                className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition font-medium"
+                onClick={saveProfile}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg"
               >
-                Close
-              </button>
-              <button className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium">
-                Edit User
+                Save
               </button>
             </div>
           </div>

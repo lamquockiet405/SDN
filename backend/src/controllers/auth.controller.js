@@ -17,6 +17,7 @@ const {
   sendOTPEmail,
 } = require("../utils/email");
 const { generateOTPSecret, verifyOTP } = require("../utils/otp");
+const { syncProfileFromAuthUser } = require("../utils/userProfile");
 const { OAuth2Client } = require("google-auth-library");
 const crypto = require("crypto");
 
@@ -90,6 +91,7 @@ exports.register = async (req, res) => {
       password,
       role: "user",
     });
+    await syncProfileFromAuthUser(user);
 
     const ipAddress = getIpAddress(req);
     const userAgent = getUserAgent(req);
@@ -197,6 +199,7 @@ exports.login = async (req, res) => {
     user.refreshToken = refreshToken;
     user.lastLogin = new Date();
     await user.save();
+    await syncProfileFromAuthUser(user, { lastLogin: user.lastLogin });
 
     // Log successful login
     await logAudit(user._id, "LOGIN", ipAddress, userAgent);
@@ -224,6 +227,12 @@ exports.login = async (req, res) => {
 exports.googleLogin = async (req, res) => {
   try {
     const { token } = req.body;
+
+    console.log(
+      "\n=== GOOGLE_ID_TOKEN ===\n",
+      token,
+      "\n=======================\n",
+    );
 
     if (!token) {
       return res.status(400).json({
@@ -290,6 +299,7 @@ exports.googleLogin = async (req, res) => {
     user.refreshToken = refreshToken;
     user.lastLogin = new Date();
     await user.save();
+    await syncProfileFromAuthUser(user, { lastLogin: user.lastLogin });
 
     // Log Google login
     await logAudit(user._id, "GOOGLE_LOGIN", ipAddress, userAgent);
@@ -726,6 +736,7 @@ exports.verify2FA = async (req, res) => {
       user.refreshToken = refreshToken;
       user.lastLogin = new Date();
       await user.save();
+      await syncProfileFromAuthUser(user, { lastLogin: user.lastLogin });
 
       const ipAddress = getIpAddress(req);
       const userAgent = getUserAgent(req);
@@ -904,6 +915,32 @@ exports.changePassword = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error changing password",
+      error: error.message,
+    });
+  }
+};
+
+// @route   GET /api/auth/me
+// @desc    Get current authenticated user
+// @access  Private
+exports.getCurrentUser = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    await syncProfileFromAuthUser(user, { lastLogin: user.lastLogin });
+
+    res.status(200).json(user.toJSON());
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching current user",
       error: error.message,
     });
   }

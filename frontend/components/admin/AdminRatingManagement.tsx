@@ -1,353 +1,300 @@
 "use client";
 
-import { useState } from "react";
-import { Star, Trash2, Eye, EyeOff } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Eye, EyeOff, Star, Trash2 } from "lucide-react";
+import { reviewService } from "@/services/reviewService";
+import { Review } from "@/types/review";
 
-interface Rating {
-  id: string;
-  user: string;
-  room: string;
-  rating: number;
-  comment: string;
-  date: string;
-  commentHidden: boolean;
-}
+const getRoomName = (review: Review) =>
+  typeof review.roomId === "object"
+    ? review.roomId.name || review.roomId.location || review.roomId._id
+    : review.roomId;
+
+const getUserName = (review: Review) =>
+  typeof review.userId === "object"
+    ? review.userId.name || review.userId.email || review.userId._id
+    : review.userId;
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error &&
+    typeof (error as { response?: unknown }).response === "object" &&
+    (error as { response?: { data?: { message?: string } } }).response?.data
+      ?.message
+  ) {
+    return (error as { response: { data: { message: string } } }).response.data
+      .message;
+  }
+
+  return fallback;
+};
 
 export default function AdminRatingManagement() {
-  const [ratings, setRatings] = useState<Rating[]>([
-    {
-      id: "r1",
-      user: "John Doe",
-      room: "Study Room A",
-      rating: 5,
-      comment: "Excellent study environment, very quiet and comfortable.",
-      date: "2025-03-15 14:20",
-      commentHidden: false,
-    },
-    {
-      id: "r2",
-      user: "Jane Smith",
-      room: "Lab Room B",
-      rating: 4,
-      comment: "Good room, but AC could be better during summer.",
-      date: "2025-03-14 11:45",
-      commentHidden: false,
-    },
-    {
-      id: "r3",
-      user: "Mike Johnson",
-      room: "Meeting Room C",
-      rating: 3,
-      comment: "Decent but needs better lighting and more comfortable chairs.",
-      date: "2025-03-13 16:30",
-      commentHidden: false,
-    },
-    {
-      id: "r4",
-      user: "Sarah Williams",
-      room: "Study Room A",
-      rating: 5,
-      comment: "Perfect for group projects! Very satisfied.",
-      date: "2025-03-12 13:15",
-      commentHidden: false,
-    },
-  ]);
+  const [ratings, setRatings] = useState<Review[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [roomFilter, setRoomFilter] = useState("all");
+  const [ratingFilter, setRatingFilter] = useState("all");
+  const [summary, setSummary] = useState({ totalReviews: 0, averageRating: 0 });
 
-  const [selectedRating, setSelectedRating] = useState<Rating | null>(null);
-  const [showModal, setShowModal] = useState(false);
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [listRes, summaryRes] = await Promise.all([
+        reviewService.getReviewManagement({
+          page: 1,
+          limit: 100,
+          sortBy: "createdAt",
+          sortOrder: "desc",
+        }),
+        reviewService.getRatingSummary({ groupBy: "room" }),
+      ]);
 
-  const toggleCommentVisibility = (id: string) => {
-    setRatings(
-      ratings.map((r) =>
-        r.id === id ? { ...r, commentHidden: !r.commentHidden } : r,
-      ),
-    );
+      setRatings(listRes.data || []);
+      setSummary(summaryRes.overall || { totalReviews: 0, averageRating: 0 });
+    } catch (error) {
+      console.error("Failed to fetch ratings", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const deleteRating = (id: string) => {
-    setRatings(ratings.filter((r) => r.id !== id));
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const rooms = useMemo(
+    () => Array.from(new Set(ratings.map((item) => getRoomName(item)))),
+    [ratings],
+  );
+
+  const filtered = ratings.filter((item) => {
+    const roomMatch = roomFilter === "all" || getRoomName(item) === roomFilter;
+    const ratingMatch =
+      ratingFilter === "all" || item.rating === Number(ratingFilter);
+    return roomMatch && ratingMatch;
+  });
+
+  const distribution = {
+    five: ratings.filter((item) => item.rating === 5).length,
+    mid: ratings.filter((item) => item.rating === 3 || item.rating === 4)
+      .length,
+    low: ratings.filter((item) => item.rating <= 2).length,
   };
 
-  const averageRating =
-    ratings.length > 0
-      ? (
-          ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length
-        ).toFixed(1)
-      : 0;
+  const handleToggleHide = async (review: Review) => {
+    try {
+      await reviewService.toggleHideReview(
+        review._id,
+        !review.isHidden,
+        review.isHidden ? "Unhide comment" : "Hide comment",
+      );
+      await fetchData();
+    } catch (error) {
+      alert(getErrorMessage(error, "Update hide status failed"));
+    }
+  };
 
-  const ratingDistribution = {
-    5: ratings.filter((r) => r.rating === 5).length,
-    4: ratings.filter((r) => r.rating === 4).length,
-    3: ratings.filter((r) => r.rating === 3).length,
-    2: ratings.filter((r) => r.rating === 2).length,
-    1: ratings.filter((r) => r.rating === 1).length,
+  const handleDelete = async (reviewId: string) => {
+    try {
+      await reviewService.deleteReview(reviewId, "Delete comment by admin");
+      await fetchData();
+    } catch (error) {
+      alert(getErrorMessage(error, "Delete comment failed"));
+    }
   };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-2">
           <Star size={32} className="text-yellow-600" />
           Rating Management
         </h1>
-        <p className="text-slate-600 mt-1">Monitor and manage user feedback</p>
+        <p className="text-slate-600 mt-1">
+          Monitor and moderate user feedback
+        </p>
       </div>
 
-      {/* Statistics */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <p className="text-sm text-blue-600 font-semibold mb-1">
             Total Ratings
           </p>
-          <p className="text-2xl font-bold text-blue-900">{ratings.length}</p>
+          <p className="text-2xl font-bold text-blue-900">
+            {summary.totalReviews}
+          </p>
         </div>
-
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <p className="text-sm text-yellow-600 font-semibold mb-1">Average</p>
           <div className="flex items-center gap-2">
             <p className="text-2xl font-bold text-yellow-900">
-              {averageRating}
+              {Number(summary.averageRating || 0).toFixed(1)}
             </p>
             <Star size={20} className="text-yellow-500 fill-yellow-500" />
           </div>
         </div>
-
         <div className="bg-green-50 border border-green-200 rounded-lg p-4">
           <p className="text-sm text-green-600 font-semibold mb-1">5 Stars</p>
           <p className="text-2xl font-bold text-green-900">
-            {ratingDistribution[5]}
+            {distribution.five}
           </p>
         </div>
-
         <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
           <p className="text-sm text-orange-600 font-semibold mb-1">
             3-4 Stars
           </p>
           <p className="text-2xl font-bold text-orange-900">
-            {ratingDistribution[4] + ratingDistribution[3]}
+            {distribution.mid}
           </p>
         </div>
-
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <p className="text-sm text-red-600 font-semibold mb-1">
             Below 3 Stars
           </p>
-          <p className="text-2xl font-bold text-red-900">
-            {ratingDistribution[1] + ratingDistribution[2]}
-          </p>
+          <p className="text-2xl font-bold text-red-900">{distribution.low}</p>
         </div>
       </div>
 
-      {/* Ratings Table */}
+      <div className="flex gap-4 flex-wrap bg-slate-50 rounded-lg p-4 border border-slate-200">
+        <div>
+          <label className="block text-sm font-semibold text-slate-700 mb-2">
+            Filter by Room
+          </label>
+          <select
+            value={roomFilter}
+            onChange={(e) => setRoomFilter(e.target.value)}
+            className="px-3 py-2 border border-slate-300 rounded-lg text-slate-700 bg-white"
+          >
+            <option value="all">All Rooms</option>
+            {rooms.map((room) => (
+              <option key={room} value={room}>
+                {room}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-semibold text-slate-700 mb-2">
+            Filter by Rating
+          </label>
+          <select
+            value={ratingFilter}
+            onChange={(e) => setRatingFilter(e.target.value)}
+            className="px-3 py-2 border border-slate-300 rounded-lg text-slate-700 bg-white"
+          >
+            <option value="all">All Ratings</option>
+            <option value="5">5 Stars</option>
+            <option value="4">4 Stars</option>
+            <option value="3">3 Stars</option>
+            <option value="2">2 Stars</option>
+            <option value="1">1 Star</option>
+          </select>
+        </div>
+      </div>
+
       <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-700">
-                  User
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-700">
-                  Room
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-700">
-                  Rating
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-700">
-                  Comment
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-700">
-                  Date
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-700">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {ratings.map((rating) => (
-                <tr key={rating.id} className="hover:bg-slate-50 transition">
-                  <td className="px-6 py-4 font-medium text-slate-900">
-                    {rating.user}
-                  </td>
-                  <td className="px-6 py-4 text-slate-700">{rating.room}</td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-1">
-                      {[...Array(5)].map((_, i) => (
-                        <Star
-                          key={i}
-                          size={16}
-                          className={
-                            i < rating.rating
-                              ? "fill-yellow-400 text-yellow-400"
-                              : "text-slate-300"
-                          }
-                        />
-                      ))}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-slate-600 max-w-xs">
-                    {rating.commentHidden ? (
-                      <span className="text-slate-400 italic">
-                        Comment hidden
-                      </span>
-                    ) : (
-                      <span className="truncate">{rating.comment}</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-slate-700">{rating.date}</td>
-                  <td className="px-6 py-4">
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => {
-                          setSelectedRating(rating);
-                          setShowModal(true);
-                        }}
-                        className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition"
-                      >
-                        <Eye size={18} />
-                      </button>
-                      <button
-                        onClick={() => toggleCommentVisibility(rating.id)}
-                        className={`p-2 rounded-lg transition ${
-                          rating.commentHidden
-                            ? "text-red-600 hover:bg-red-50"
-                            : "text-yellow-600 hover:bg-yellow-50"
-                        }`}
-                      >
-                        {rating.commentHidden ? (
-                          <EyeOff size={18} />
-                        ) : (
-                          <Eye size={18} />
-                        )}
-                      </button>
-                      <button
-                        onClick={() => deleteRating(rating.id)}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
-                  </td>
+        {loading ? (
+          <div className="p-8 text-center text-slate-500">Loading...</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-700">
+                    User
+                  </th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-700">
+                    Room
+                  </th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-700">
+                    Rating
+                  </th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-700">
+                    Comment
+                  </th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-700">
+                    Date
+                  </th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-700">
+                    Actions
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {filtered.map((item) => (
+                  <tr key={item._id} className="hover:bg-slate-50 transition">
+                    <td className="px-6 py-4 font-medium text-slate-900">
+                      {getUserName(item)}
+                    </td>
+                    <td className="px-6 py-4 text-slate-700">
+                      {getRoomName(item)}
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-1">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Star
+                            key={star}
+                            size={16}
+                            className={
+                              star <= item.rating
+                                ? "fill-yellow-400 text-yellow-400"
+                                : "text-slate-300"
+                            }
+                          />
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-slate-600 max-w-xs">
+                      {item.isHidden ? (
+                        <span className="text-slate-400 italic">
+                          Comment hidden
+                        </span>
+                      ) : (
+                        item.comment
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-slate-700">
+                      {new Date(item.createdAt).toLocaleString()}
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleToggleHide(item)}
+                          className={`p-2 rounded-lg transition ${
+                            item.isHidden
+                              ? "text-green-600 hover:bg-green-50"
+                              : "text-yellow-600 hover:bg-yellow-50"
+                          }`}
+                        >
+                          {item.isHidden ? (
+                            <Eye size={18} />
+                          ) : (
+                            <EyeOff size={18} />
+                          )}
+                        </button>
+                        <button
+                          onClick={() => handleDelete(item._id)}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {ratings.length === 0 && (
+      {!loading && filtered.length === 0 && (
         <div className="text-center py-12 bg-slate-50 rounded-lg">
           <Star size={48} className="mx-auto text-slate-400 mb-4" />
-          <p className="text-slate-600">No ratings yet</p>
-        </div>
-      )}
-
-      {/* Rating Details Modal */}
-      {showModal && selectedRating && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full">
-            <div className="p-6 border-b border-slate-200 flex justify-between items-center">
-              <h2 className="text-xl font-bold text-slate-900">
-                Rating Details
-              </h2>
-              <button
-                onClick={() => setShowModal(false)}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-slate-50 rounded-lg p-4">
-                  <p className="text-sm text-slate-600 mb-1">User</p>
-                  <p className="font-semibold text-slate-900">
-                    {selectedRating.user}
-                  </p>
-                </div>
-                <div className="bg-slate-50 rounded-lg p-4">
-                  <p className="text-sm text-slate-600 mb-1">Room</p>
-                  <p className="font-semibold text-slate-900">
-                    {selectedRating.room}
-                  </p>
-                </div>
-              </div>
-
-              <div className="bg-slate-50 rounded-lg p-4">
-                <p className="text-sm text-slate-600 mb-2">Rating</p>
-                <div className="flex items-center gap-1">
-                  {[...Array(5)].map((_, i) => (
-                    <Star
-                      key={i}
-                      size={20}
-                      className={
-                        i < selectedRating.rating
-                          ? "fill-yellow-400 text-yellow-400"
-                          : "text-slate-300"
-                      }
-                    />
-                  ))}
-                </div>
-              </div>
-
-              <div className="bg-slate-50 rounded-lg p-4">
-                <p className="text-sm text-slate-600 mb-2">Comment</p>
-                <p className="text-slate-900">{selectedRating.comment}</p>
-              </div>
-
-              <div className="bg-slate-50 rounded-lg p-4">
-                <p className="text-sm text-slate-600 mb-1">Date</p>
-                <p className="font-semibold text-slate-900">
-                  {selectedRating.date}
-                </p>
-              </div>
-            </div>
-
-            <div className="p-6 border-t border-slate-200 flex gap-3">
-              <button
-                onClick={() => setShowModal(false)}
-                className="flex-1 px-4 py-2 border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 transition font-medium"
-              >
-                Close
-              </button>
-              <button
-                onClick={() => {
-                  toggleCommentVisibility(selectedRating.id);
-                  setShowModal(false);
-                }}
-                className={`flex-1 px-4 py-2 rounded-lg transition font-medium flex items-center justify-center gap-2 ${
-                  selectedRating.commentHidden
-                    ? "bg-green-600 text-white hover:bg-green-700"
-                    : "bg-yellow-600 text-white hover:bg-yellow-700"
-                }`}
-              >
-                {selectedRating.commentHidden ? (
-                  <>
-                    <Eye size={18} />
-                    Show
-                  </>
-                ) : (
-                  <>
-                    <EyeOff size={18} />
-                    Hide
-                  </>
-                )}
-              </button>
-              <button
-                onClick={() => {
-                  deleteRating(selectedRating.id);
-                  setShowModal(false);
-                }}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium flex items-center justify-center gap-2"
-              >
-                <Trash2 size={18} />
-                Delete
-              </button>
-            </div>
-          </div>
+          <p className="text-slate-600">No ratings found</p>
         </div>
       )}
     </div>

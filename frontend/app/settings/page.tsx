@@ -3,7 +3,8 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useAuth } from "@/context/AuthContext";
 import { authService } from "@/services/authService";
-import { useState } from "react";
+import { userService } from "@/services/userService";
+import { useEffect, useState } from "react";
 import {
   User as UserIcon,
   Lock,
@@ -43,6 +44,24 @@ export default function SettingsPage() {
     setProfileData({ ...profileData, [field]: value });
   };
 
+  useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        const profile = await userService.getMyProfile();
+        setProfileData((prev) => ({
+          ...prev,
+          name: profile.name || prev.name,
+          email: profile.email || prev.email,
+          phone: profile.phone || prev.phone,
+        }));
+      } catch (error) {
+        console.error("Failed to load profile", error);
+      }
+    };
+
+    loadProfile();
+  }, []);
+
   const handleSecurityChange = (field: string, value: string) => {
     setSecurityData({ ...securityData, [field]: value });
   };
@@ -52,12 +71,29 @@ export default function SettingsPage() {
   };
 
   const handleSaveProfile = async () => {
+    setErrorMessage("");
     setIsSaving(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    setSuccessMessage("Profile updated successfully!");
-    setIsSaving(false);
-    setTimeout(() => setSuccessMessage(""), 3000);
+    try {
+      const updated = await userService.updateMyProfile({
+        name: profileData.name,
+        phone: profileData.phone,
+      });
+      setProfileData((prev) => ({
+        ...prev,
+        name: updated.name || prev.name,
+        email: updated.email || prev.email,
+        phone: updated.phone || prev.phone,
+      }));
+      setSuccessMessage("Profile updated successfully!");
+    } catch (error: any) {
+      setErrorMessage(
+        error?.response?.data?.message || "Failed to update profile",
+      );
+    } finally {
+      setIsSaving(false);
+      setTimeout(() => setSuccessMessage(""), 3000);
+      setTimeout(() => setErrorMessage(""), 3000);
+    }
   };
 
   const handleChangePassword = async () => {

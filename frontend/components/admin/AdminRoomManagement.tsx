@@ -1,82 +1,81 @@
 "use client";
 
-import { useState } from "react";
-import { DoorOpen, Plus, Edit2, Trash2 } from "lucide-react";
-
-interface Room {
-  id: string;
-  name: string;
-  capacity: number;
-  equipment: string;
-  status: "available" | "maintenance" | "closed";
-}
+import { useEffect, useState } from "react";
+import { DoorOpen, Plus, Trash2 } from "lucide-react";
+import { roomService } from "@/services/roomService";
+import { Room } from "@/types/room";
 
 export default function AdminRoomManagement() {
-  const [rooms, setRooms] = useState<Room[]>([
-    {
-      id: "1",
-      name: "Study Room A",
-      capacity: 30,
-      equipment: "Projector, Whiteboard, AC",
-      status: "available",
-    },
-    {
-      id: "2",
-      name: "Study Room B",
-      capacity: 25,
-      equipment: "Projector, AC",
-      status: "available",
-    },
-    {
-      id: "3",
-      name: "Lab Room A",
-      capacity: 20,
-      equipment: "Lab Equipment, AC, WiFi",
-      status: "maintenance",
-    },
-    {
-      id: "4",
-      name: "Meeting Room A",
-      capacity: 15,
-      equipment: "Video Call System, AC",
-      status: "available",
-    },
-  ]);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     capacity: 20,
-    equipment: "",
+    location: "",
+    pricePerHour: 20,
+    amenities: "",
   });
 
-  const handleAddRoom = () => {
-    if (formData.name && formData.capacity > 0) {
-      setRooms([
-        ...rooms,
-        {
-          id: Date.now().toString(),
-          ...formData,
-          status: "available",
-        },
-      ]);
-      setFormData({ name: "", capacity: 20, equipment: "" });
+  useEffect(() => {
+    fetchRooms();
+  }, []);
+
+  const fetchRooms = async () => {
+    try {
+      setLoading(true);
+      const response = await roomService.getRooms({ limit: 100, status: "" });
+      setRooms(response.rooms);
+    } catch (error) {
+      console.error("Failed to fetch rooms", error);
+      setRooms([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddRoom = async () => {
+    if (formData.name && formData.capacity > 0 && formData.location) {
+      await roomService.createRoom({
+        name: formData.name,
+        capacity: formData.capacity,
+        location: formData.location,
+        pricePerHour: formData.pricePerHour,
+        amenities: formData.amenities
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean),
+      });
+      await fetchRooms();
+      setFormData({
+        name: "",
+        capacity: 20,
+        location: "",
+        pricePerHour: 20,
+        amenities: "",
+      });
       setShowForm(false);
     }
   };
 
-  const handleChangeStatus = (id: string, status: Room["status"]) => {
-    setRooms(rooms.map((r) => (r.id === id ? { ...r, status } : r)));
+  const handleChangeStatus = async (
+    id: string,
+    status: "available" | "unavailable" | "maintenance",
+  ) => {
+    await roomService.changeRoomStatus(id, status);
+    await fetchRooms();
   };
 
-  const handleDeleteRoom = (id: string) => {
-    setRooms(rooms.filter((r) => r.id !== id));
+  const handleDeleteRoom = async (id: string) => {
+    await roomService.deleteRoom(id);
+    await fetchRooms();
   };
 
   const statusColors = {
     available: "bg-green-100 text-green-700",
     maintenance: "bg-yellow-100 text-yellow-700",
-    closed: "bg-red-100 text-red-700",
+    unavailable: "bg-red-100 text-red-700",
   };
 
   return (
@@ -108,7 +107,7 @@ export default function AdminRoomManagement() {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">
-                Room Name
+                Room Name *
               </label>
               <input
                 type="text"
@@ -124,7 +123,7 @@ export default function AdminRoomManagement() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">
-                  Capacity
+                  Capacity *
                 </label>
                 <input
                   type="number"
@@ -139,17 +138,49 @@ export default function AdminRoomManagement() {
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 bg-white hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 transition"
                 />
               </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Price Per Hour *
+                </label>
+                <input
+                  type="number"
+                  value={formData.pricePerHour}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      pricePerHour: parseInt(e.target.value, 10) || 0,
+                    })
+                  }
+                  min="0"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 bg-white hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 transition"
+                />
+              </div>
             </div>
 
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">
-                Equipment
+                Location *
               </label>
               <input
                 type="text"
-                value={formData.equipment}
+                value={formData.location}
                 onChange={(e) =>
-                  setFormData({ ...formData, equipment: e.target.value })
+                  setFormData({ ...formData, location: e.target.value })
+                }
+                placeholder="e.g., Building A - Floor 2"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 bg-white hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 transition"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                Amenities (comma separated)
+              </label>
+              <input
+                type="text"
+                value={formData.amenities}
+                onChange={(e) =>
+                  setFormData({ ...formData, amenities: e.target.value })
                 }
                 placeholder="e.g., Projector, Whiteboard, AC"
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 bg-white hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 transition"
@@ -166,7 +197,13 @@ export default function AdminRoomManagement() {
               <button
                 onClick={() => {
                   setShowForm(false);
-                  setFormData({ name: "", capacity: 20, equipment: "" });
+                  setFormData({
+                    name: "",
+                    capacity: 20,
+                    location: "",
+                    pricePerHour: 20,
+                    amenities: "",
+                  });
                 }}
                 className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition font-medium"
               >
@@ -190,7 +227,7 @@ export default function AdminRoomManagement() {
                   Capacity
                 </th>
                 <th className="px-6 py-3 text-left text-sm font-semibold text-slate-700">
-                  Equipment
+                  Location
                 </th>
                 <th className="px-6 py-3 text-left text-sm font-semibold text-slate-700">
                   Status
@@ -208,31 +245,42 @@ export default function AdminRoomManagement() {
                   </td>
                   <td className="px-6 py-4 text-slate-700">{room.capacity}</td>
                   <td className="px-6 py-4 text-slate-700 text-sm">
-                    {room.equipment}
+                    {room.location || "-"}
                   </td>
                   <td className="px-6 py-4">
                     <select
-                      value={room.status}
+                      value={
+                        room.status ||
+                        (room.isAvailable ? "available" : "unavailable")
+                      }
                       onChange={(e) =>
                         handleChangeStatus(
                           room.id,
-                          e.target.value as Room["status"],
+                          e.target.value as
+                            | "available"
+                            | "unavailable"
+                            | "maintenance",
                         )
                       }
                       className={`px-3 py-1 rounded-full text-xs font-medium border-0 ${
-                        statusColors[room.status]
+                        statusColors[
+                          (room.status ||
+                            (room.isAvailable
+                              ? "available"
+                              : "unavailable")) as
+                            | "available"
+                            | "unavailable"
+                            | "maintenance"
+                        ]
                       } cursor-pointer`}
                     >
                       <option value="available">Available</option>
                       <option value="maintenance">Maintenance</option>
-                      <option value="closed">Closed</option>
+                      <option value="unavailable">Unavailable</option>
                     </select>
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex gap-2">
-                      <button className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition">
-                        <Edit2 size={18} />
-                      </button>
                       <button
                         onClick={() => handleDeleteRoom(room.id)}
                         className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
@@ -247,6 +295,10 @@ export default function AdminRoomManagement() {
           </table>
         </div>
       </div>
+
+      {loading && (
+        <div className="text-center py-10 text-slate-500">Loading rooms...</div>
+      )}
 
       {rooms.length === 0 && (
         <div className="text-center py-12 bg-slate-50 rounded-lg">

@@ -44,7 +44,7 @@ export default function StaffDashboard() {
 
   // Redirect to home if user is not staff
   useEffect(() => {
-    if (!isLoading && user && user.role !== "staff") {
+    if (!isLoading && user && String(user.role) !== "staff") {
       router.push("/");
     }
   }, [user, isLoading, router]);

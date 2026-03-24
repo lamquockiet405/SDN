@@ -3,7 +3,12 @@ export interface User {
   email: string;
   name: string;
   avatar?: string;
-  role: "user" | "admin";
+  role: "user" | "staff" | "admin";
+  status?: "active" | "inactive" | "locked";
+  phone?: string;
+  department?: string;
+  lastLogin?: string;
+  violationCount?: number;
   isTwoFactorEnabled?: boolean;
   createdAt: string;
 }

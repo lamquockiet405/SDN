@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  Calendar,
   Zap,
+  BookOpen,
   CreditCard,
   MessageSquare,
   User,
@@ -19,16 +19,16 @@ import {
   Shield,
 } from "lucide-react";
 import UserBookingDashboard from "@/components/dashboard/UserBookingDashboard";
+import UserBookingHistoryPage from "@/components/dashboard/UserBookingHistoryPage";
 import UserProfilePage from "@/components/dashboard/UserProfilePage";
 import UserPaymentsPage from "@/components/dashboard/UserPaymentsPage";
 import UserFeedbackPage from "@/components/dashboard/UserFeedbackPage";
-import UserRoomsPage from "@/components/dashboard/UserRoomsPage";
 import UserSettingsPage from "@/components/dashboard/UserSettingsPage";
 import UserTwoFactorPage from "@/components/dashboard/UserTwoFactorPage";
 
 const VALID_TABS = new Set([
-  "bookings",
   "rooms",
+  "bookings",
   "payments",
   "feedback",
   "profile",
@@ -41,7 +41,7 @@ export default function UserDashboard() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [activeNav, setActiveNav] = useState("bookings");
+  const [activeNav, setActiveNav] = useState("rooms");
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   // Redirect to login if not authenticated
@@ -62,6 +62,11 @@ export default function UserDashboard() {
 
   useEffect(() => {
     const tab = searchParams.get("tab");
+    if (tab === "bookings") {
+      setActiveNav("rooms");
+      return;
+    }
+
     if (tab && VALID_TABS.has(tab)) {
       setActiveNav(tab);
     }
@@ -72,7 +77,7 @@ export default function UserDashboard() {
     if (
       !isLoading &&
       user &&
-      (user.role === "admin" || user.role === "staff")
+      (String(user.role) === "admin" || String(user.role) === "staff")
     ) {
       router.push("/");
     }
@@ -99,8 +104,8 @@ export default function UserDashboard() {
   }
 
   const navigationItems = [
-    { id: "bookings", label: "Bookings", icon: Calendar },
     { id: "rooms", label: "Rooms", icon: Zap },
+    { id: "bookings", label: "Bookings", icon: BookOpen },
     { id: "payments", label: "Payments", icon: CreditCard },
     { id: "feedback", label: "Feedback", icon: MessageSquare },
     { id: "profile", label: "Profile", icon: User },
@@ -307,8 +312,18 @@ export default function UserDashboard() {
 
         {/* Page Content */}
         <div className="p-6">
-          {activeNav === "bookings" && <UserBookingDashboard />}
-          {activeNav === "rooms" && <UserRoomsPage />}
+          {activeNav === "rooms" && (
+            <div className="space-y-8">
+              <section id="my-bookings-section" className="space-y-4">
+                <h2 className="text-2xl font-bold text-slate-900">
+                  My Bookings
+                </h2>
+                <UserBookingDashboard />
+              </section>
+            </div>
+          )}
+
+          {activeNav === "bookings" && <UserBookingHistoryPage />}
           {activeNav === "profile" && <UserProfilePage />}
           {activeNav === "2fa" && <UserTwoFactorPage />}
           {activeNav === "payments" && <UserPaymentsPage />}

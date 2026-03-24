@@ -1,241 +1,138 @@
 "use client";
 
-import { useState } from "react";
-import { Lock, Edit2, Save, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Lock, Save } from "lucide-react";
+import { RolePermission, userService } from "@/services/userService";
 
-interface Permission {
-  id: string;
-  name: string;
-  description: string;
-}
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error &&
+    typeof (error as { response?: unknown }).response === "object" &&
+    (error as { response?: { data?: { message?: string } } }).response?.data
+      ?.message
+  ) {
+    return (error as { response: { data: { message: string } } }).response.data
+      .message;
+  }
 
-interface Role {
-  id: string;
-  name: string;
-  permissions: string[];
-}
+  return fallback;
+};
 
 export default function AdminPermissionsManagement() {
-  const [roles, setRoles] = useState<Role[]>([
-    {
-      id: "1",
-      name: "Admin",
-      permissions: [
-        "p1",
-        "p2",
-        "p3",
-        "p4",
-        "p5",
-        "p6",
-        "p7",
-        "p8",
-        "p9",
-        "p10",
-      ],
-    },
-    {
-      id: "2",
-      name: "Staff",
-      permissions: ["p2", "p3", "p4", "p5", "p6"],
-    },
-    {
-      id: "3",
-      name: "User",
-      permissions: ["p2", "p4"],
-    },
-  ]);
+  const [roles, setRoles] = useState<RolePermission[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [savingRole, setSavingRole] = useState<string | null>(null);
+  const [error, setError] = useState("");
 
-  const permissions: Permission[] = [
-    {
-      id: "p1",
-      name: "Manage Rooms",
-      description: "Create, edit, delete rooms",
-    },
-    {
-      id: "p2",
-      name: "View Bookings",
-      description: "View all booking information",
-    },
-    {
-      id: "p3",
-      name: "Approve Bookings",
-      description: "Approve or reject pending bookings",
-    },
-    { id: "p4", name: "Create Bookings", description: "Create new bookings" },
-    {
-      id: "p5",
-      name: "Manage Users",
-      description: "Manage user accounts and permissions",
-    },
-    {
-      id: "p6",
-      name: "Manage Staff",
-      description: "Manage staff accounts",
-    },
-    {
-      id: "p7",
-      name: "View Audit Logs",
-      description: "Access system audit logs",
-    },
-    {
-      id: "p8",
-      name: "Manage Evidence",
-      description: "Review and approve usage evidence",
-    },
-    {
-      id: "p9",
-      name: "Manage Ratings",
-      description: "Manage user feedback and ratings",
-    },
-    {
-      id: "p10",
-      name: "System Settings",
-      description: "Modify system-wide settings",
-    },
-  ];
-
-  const [editingRole, setEditingRole] = useState<string | null>(null);
-  const [editedPermissions, setEditedPermissions] = useState<string[]>([]);
-
-  const handleEditRole = (roleId: string) => {
-    const role = roles.find((r) => r.id === roleId);
-    if (role) {
-      setEditingRole(roleId);
-      setEditedPermissions([...role.permissions]);
+  const loadPermissions = async () => {
+    try {
+      setLoading(true);
+      setError("");
+      const data = await userService.getPermissions();
+      setRoles(data);
+    } catch (error: unknown) {
+      setError(getErrorMessage(error, "Failed to load permissions"));
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handlePermissionToggle = (permId: string) => {
-    if (editedPermissions.includes(permId)) {
-      setEditedPermissions(editedPermissions.filter((p) => p !== permId));
-    } else {
-      setEditedPermissions([...editedPermissions, permId]);
-    }
-  };
+  useEffect(() => {
+    loadPermissions();
+  }, []);
 
-  const handleSavePermissions = () => {
-    setRoles(
-      roles.map((r) =>
-        r.id === editingRole ? { ...r, permissions: editedPermissions } : r,
+  const updatePermissionText = (role: string, value: string) => {
+    setRoles((prev) =>
+      prev.map((item) =>
+        item.role === role
+          ? {
+              ...item,
+              permissions: value
+                .split("\n")
+                .map((line) => line.trim())
+                .filter(Boolean),
+            }
+          : item,
       ),
     );
-    setEditingRole(null);
-    setEditedPermissions([]);
+  };
+
+  const saveRole = async (item: RolePermission) => {
+    try {
+      setSavingRole(item.role);
+      await userService.updatePermissions(item.role, item.permissions);
+    } catch (error: unknown) {
+      alert(getErrorMessage(error, "Failed to update permissions"));
+    } finally {
+      setSavingRole(null);
+    }
   };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-2">
-          <Lock size={32} className="text-indigo-600" />
+          <Lock size={30} className="text-indigo-600" />
           Permissions Management
         </h1>
         <p className="text-slate-600 mt-1">
-          Manage role-based permissions and access control
+          Manage permission mappings by role
         </p>
       </div>
 
-      {/* Roles */}
-      <div className="space-y-6">
-        {roles.map((role) => (
-          <div
-            key={role.id}
-            className="bg-white rounded-lg shadow-sm border border-slate-200 p-6"
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-slate-900">{role.name}</h2>
-              {editingRole === role.id ? (
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleSavePermissions}
-                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium"
-                  >
-                    <Save size={18} />
-                    Save
-                  </button>
-                  <button
-                    onClick={() => {
-                      setEditingRole(null);
-                      setEditedPermissions([]);
-                    }}
-                    className="flex items-center gap-2 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition font-medium"
-                  >
-                    <X size={18} />
-                    Cancel
-                  </button>
-                </div>
-              ) : (
+      {error && (
+        <div className="bg-red-50 text-red-700 border border-red-200 rounded-lg p-4">
+          {error}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="text-slate-600">Loading role permissions...</div>
+      ) : (
+        <div className="space-y-4">
+          {roles.map((roleItem) => (
+            <div
+              key={roleItem.role}
+              className="bg-white rounded-lg border border-slate-200 p-5 space-y-3"
+            >
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-bold text-slate-900 uppercase">
+                  {roleItem.role}
+                </h2>
                 <button
-                  onClick={() => handleEditRole(role.id)}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
+                  onClick={() => saveRole(roleItem)}
+                  disabled={
+                    savingRole === roleItem.role || roleItem.role === "admin"
+                  }
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-slate-400 flex items-center gap-2"
                 >
-                  <Edit2 size={18} />
-                  Edit
+                  <Save size={16} />
+                  {savingRole === roleItem.role ? "Saving..." : "Save"}
                 </button>
+              </div>
+
+              <p className="text-sm text-slate-600">One permission per line</p>
+
+              {roleItem.role === "admin" && (
+                <p className="text-xs text-indigo-700 bg-indigo-50 border border-indigo-200 rounded px-3 py-2">
+                  Admin permissions are fixed as full system access.
+                </p>
               )}
-            </div>
 
-            {/* Permissions Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {permissions.map((perm) => {
-                const isGranted =
-                  editingRole === role.id
-                    ? editedPermissions.includes(perm.id)
-                    : role.permissions.includes(perm.id);
-
-                return (
-                  <div
-                    key={perm.id}
-                    className={`p-4 rounded-lg border-2 transition cursor-pointer ${
-                      isGranted
-                        ? "border-green-500 bg-green-50"
-                        : "border-slate-200 bg-slate-50 hover:border-slate-300"
-                    }`}
-                    onClick={() => {
-                      if (editingRole === role.id) {
-                        handlePermissionToggle(perm.id);
-                      }
-                    }}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div
-                        className={`w-5 h-5 rounded border-2 mt-1 flex items-center justify-center ${
-                          isGranted
-                            ? "bg-green-500 border-green-500"
-                            : "border-slate-300"
-                        }`}
-                      >
-                        {isGranted && (
-                          <svg
-                            className="w-3 h-3 text-white"
-                            viewBox="0 0 20 20"
-                            fill="currentColor"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        )}
-                      </div>
-                      <div>
-                        <p className="font-semibold text-slate-900">
-                          {perm.name}
-                        </p>
-                        <p className="text-xs text-slate-600 mt-1">
-                          {perm.description}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+              <textarea
+                value={roleItem.permissions.join("\n")}
+                onChange={(event) =>
+                  updatePermissionText(roleItem.role, event.target.value)
+                }
+                disabled={roleItem.role === "admin"}
+                className="w-full min-h-40 px-3 py-2 border border-slate-300 rounded-lg"
+              />
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

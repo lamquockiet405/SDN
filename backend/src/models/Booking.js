@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { getBookingConnection } = require("../config/db");
 
 const bookingSchema = new mongoose.Schema(
   {
@@ -22,8 +23,18 @@ const bookingSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "confirmed", "completed", "cancelled"],
+      enum: [
+        "pending",
+        "approved",
+        "rejected",
+        "checked_in",
+        "checked_out",
+        "cancelled",
+        "confirmed",
+        "completed",
+      ],
       default: "pending",
+      index: true,
     },
     totalPrice: {
       type: Number,
@@ -41,6 +52,48 @@ const bookingSchema = new mongoose.Schema(
         type: String,
       },
     ],
+    groupBooking: {
+      type: Boolean,
+      default: false,
+    },
+    checkInTime: Date,
+    checkOutTime: Date,
+    extendedMinutes: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    extendCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    approvedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    rejectedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    rejectionReason: {
+      type: String,
+      trim: true,
+    },
+    cancelledBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    cancellationReason: {
+      type: String,
+      trim: true,
+    },
+    evidenceStatus: {
+      type: String,
+      enum: ["none", "pending", "approved", "rejected"],
+      default: "none",
+      index: true,
+    },
     notes: String,
   },
   { timestamps: true },
@@ -51,5 +104,11 @@ bookingSchema.index({ userId: 1, createdAt: -1 });
 bookingSchema.index({ roomId: 1 });
 bookingSchema.index({ startTime: 1, endTime: 1 });
 bookingSchema.index({ status: 1 });
+bookingSchema.index({ userId: 1, status: 1, createdAt: -1 });
+bookingSchema.index({ status: 1, startTime: 1 });
 
-module.exports = mongoose.model("Booking", bookingSchema);
+const bookingConnection = getBookingConnection();
+
+module.exports =
+  bookingConnection.models.Booking ||
+  bookingConnection.model("Booking", bookingSchema);
