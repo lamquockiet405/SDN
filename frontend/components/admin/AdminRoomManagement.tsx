@@ -11,6 +11,7 @@ export default function AdminRoomManagement() {
 
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
+    roomCode: "",
     name: "",
     capacity: 20,
     location: "",
@@ -36,8 +37,14 @@ export default function AdminRoomManagement() {
   };
 
   const handleAddRoom = async () => {
-    if (formData.name && formData.capacity > 0 && formData.location) {
+    if (
+      formData.roomCode &&
+      formData.name &&
+      formData.capacity > 0 &&
+      formData.location
+    ) {
       await roomService.createRoom({
+        roomCode: formData.roomCode,
         name: formData.name,
         capacity: formData.capacity,
         location: formData.location,
@@ -49,6 +56,7 @@ export default function AdminRoomManagement() {
       });
       await fetchRooms();
       setFormData({
+        roomCode: "",
         name: "",
         capacity: 20,
         location: "",
@@ -105,6 +113,20 @@ export default function AdminRoomManagement() {
             Add New Room
           </h2>
           <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                Room Code *
+              </label>
+              <input
+                type="text"
+                value={formData.roomCode}
+                onChange={(e) =>
+                  setFormData({ ...formData, roomCode: e.target.value })
+                }
+                placeholder="e.g., R-A-101"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 bg-white hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 transition"
+              />
+            </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">
                 Room Name *
@@ -198,6 +220,7 @@ export default function AdminRoomManagement() {
                 onClick={() => {
                   setShowForm(false);
                   setFormData({
+                    roomCode: "",
                     name: "",
                     capacity: 20,
                     location: "",

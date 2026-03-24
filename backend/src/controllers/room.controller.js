@@ -269,6 +269,7 @@ exports.getRoomById = async (req, res) => {
 exports.createRoom = async (req, res) => {
   try {
     const {
+      roomCode,
       name,
       description,
       capacity,
@@ -280,7 +281,13 @@ exports.createRoom = async (req, res) => {
       status,
     } = req.body;
 
-    if (!name || !capacity || !location || pricePerHour === undefined) {
+    if (
+      !roomCode ||
+      !name ||
+      !capacity ||
+      !location ||
+      pricePerHour === undefined
+    ) {
       return res.status(400).json({
         success: false,
         message: "Please provide all required fields",
@@ -291,6 +298,7 @@ exports.createRoom = async (req, res) => {
       status && allowedRoomStatuses.includes(status) ? status : "available";
 
     const room = await Room.create({
+      roomCode,
       name,
       description,
       capacity,
@@ -326,6 +334,7 @@ exports.createRoom = async (req, res) => {
 exports.updateRoom = async (req, res) => {
   try {
     const {
+      roomCode,
       name,
       description,
       capacity,
@@ -348,6 +357,7 @@ exports.updateRoom = async (req, res) => {
     }
 
     if (name !== undefined) room.name = name;
+    if (roomCode !== undefined) room.roomCode = roomCode;
     if (description !== undefined) room.description = description;
     if (capacity !== undefined) room.capacity = capacity;
     if (location !== undefined) room.location = location;

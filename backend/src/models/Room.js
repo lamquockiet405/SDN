@@ -9,6 +9,12 @@ const roomSchema = new mongoose.Schema(
       unique: true,
       trim: true,
     },
+    roomCode: {
+      type: String,
+      required: [true, "Room code is required"],
+      unique: true,
+      trim: true,
+    },
     description: {
       type: String,
       trim: true,
@@ -49,6 +55,7 @@ const roomSchema = new mongoose.Schema(
 );
 
 roomSchema.index({ name: 1 });
+roomSchema.index({ roomCode: 1 });
 roomSchema.index({ location: 1 });
 roomSchema.index({ capacity: 1 });
 roomSchema.index({ pricePerHour: 1 });
